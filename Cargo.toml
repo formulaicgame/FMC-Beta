@@ -4,9 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-fmc = { path = "../crates/fmc"}
-fmc_networking = { path = "../crates/fmc_networking"}
-serde_json = { path = "../crates/json"}
+fmc = { git = "https://github.com/formulaicgame/fmc"}
+fmc_networking = { git = "https://github.com/formulaicgame/fmc_networking"}
+serde_json = { git = "https://github.com/fmcgg/json"}
 
 serde = { version = "1.0.188", features = ["derive"] }
 rand = "0.8.5"
