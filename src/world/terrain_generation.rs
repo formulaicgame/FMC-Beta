@@ -1,20 +1,14 @@
 use fmc::{
     blocks::Blocks,
-    noise::Noise,
+    noise::{Frequency, Noise},
+    // noise::Noise,
     prelude::*,
-    world::{chunk::Chunk, TerrainGenerator},
+    world::{chunk::Chunk, Surface, TerrainGenerator},
 };
+
 use rand::SeedableRng;
 
 use super::biomes::Biomes;
-
-// The heighest point relative to the base height 3d noise can extend to create terrain.
-const MAX_HEIGHT: i32 = 120;
-
-// TODO: Read this from biome
-// y_offset is the amount of blocks above the chunk that need to be generated to know how
-// deep we are, in order to know which blocks to use when at the surface.
-const Y_OFFSET: usize = 4;
 
 pub struct Earth {
     biomes: Biomes,
@@ -22,75 +16,115 @@ pub struct Earth {
     terrain_height: Noise,
     terrain_shape: Noise,
     caves: Noise,
-    seed: i32,
+    seed: u64,
+}
+
+impl TerrainGenerator for Earth {
+    fn generate_chunk(&self, chunk_position: IVec3) -> Chunk {
+        let mut chunk = Chunk::default();
+
+        let air = Blocks::get().get_id("air");
+        const MAX_HEIGHT: i32 = 120;
+        if MAX_HEIGHT < chunk_position.y {
+            // Don't waste time generating if it is guaranteed to be air.
+            chunk.make_uniform(air);
+        } else {
+            self.generate_terrain(chunk_position, &mut chunk);
+
+            // TODO: Might make sense to test against water too.
+            //
+            // Test for air chunk uniformity early so we can break and elide the other generation
+            // functions. This makes it so all other chunks that are uniform with another type of
+            // block get stored as full size chunks. They are assumed to be very rare.
+            let mut uniform = true;
+            for block in chunk.blocks.iter() {
+                if *block != air {
+                    uniform = false;
+                    break;
+                }
+            }
+
+            if uniform {
+                chunk.make_uniform(air);
+                return chunk;
+            }
+
+            //self.carve_caves(chunk_position, &mut chunk);
+            self.generate_features(chunk_position, &mut chunk);
+        }
+
+        return chunk;
+    }
 }
 
 impl Earth {
-    pub fn new(seed: i32, blocks: &Blocks) -> Self {
-        //let freq = 1.0/200.0;
-        //let terrain_low = Noise::simplex(0.0, seed).with_frequency(freq, 0.0, freq).fbm(4, 0.5, 2.0).mul_value(0.3);
-        //let terrain_high = Noise::simplex(0.0, seed + 1).with_frequency(freq, 0.0, freq).fbm(4, 0.5, 2.0).max(terrain_low.clone());
-        //let freq = 1.0/200.0;
-        //let terrain_shape_low = Noise::simplex(0.0, seed + 2).with_frequency(freq, freq * 0.5, freq).fbm(5, 0.5, 2.0);
-        //let terrain_shape_high = Noise::simplex(0.0, seed + 3).with_frequency(freq, freq * 0.5, freq).fbm(5, 0.5, 2.0);
-        //let terrain_shape = Noise::simplex(0.0, seed + 4).with_frequency(freq, freq * 0.5, freq).lerp(terrain_shape_high, terrain_shape_low).range(0.1, -0.1, terrain_high, terrain_low);
+    pub fn new(seed: u64, blocks: &Blocks) -> Self {
+        let freq = 1.0 / 2f32.powi(9) * 3.0;
+        // let freq = 0.00305;
+        let continents = Noise::perlin(Frequency {
+            x: freq,
+            y: 0.0,
+            z: freq,
+        })
+        .seed(seed as u32 + 429340)
+        .fbm(4, 0.5, 2.0)
+        .abs()
+        // This is the "max" height (keep in mind fbm reduces the median amplitude)
+        .mul(Noise::constant(120.0))
+        // sea
+        .add(Noise::constant(-12.0))
+        .clamp(-10.0, 10.0);
 
-        // ANOTHER ATTEMPT
-        //let freq = 0.002;
-        //let base_terrain = Noise::simplex(0.0, seed).with_frequency(freq, 0.0, freq).fbm(4, 0.5, 2.0).mul_value(0.1);
-        //let freq = 0.003;
-        //let mound = Noise::simplex(0.0, seed + 1).with_frequency(freq, 0.0, freq).fbm(4, 0.5, 2.0).abs().mul_value(0.3).add(base_terrain.clone()).max(base_terrain.clone());
-        ////let mounds = Noise::simplex(0.005, seed + 3).fbm(4, 0.5, 2.0).range(0.5, -0.5, mound_high.clone(), mound_low.clone());
+        //let freq = 1.0 / 2.0f32.powi(5);
+        let freq = 0.002189;
+        let terrain_height = continents
+            .clone()
+            .range(
+                -2.0,
+                2.0,
+                Noise::constant(0.0),
+                // Noise::constant(1.5),
+                Noise::perlin(freq)
+                    .seed(seed as u32)
+                    .fbm(10, 0.5, 2.0)
+                    .mul(Noise::constant(2.0))
+                    .add(Noise::constant(1.0)),
+            )
+            .add(Noise::constant(0.5))
+            .clamp(0.5, 1.5);
 
-        ////let terrain_low = Noise::simplex(0.001, seed + 4).fbm(6, 0.5, 2.0).add(base_terrain.clone());
-        ////let terrain_high = Noise::simplex(0.005, seed + 5).fbm(4, 0.5, 2.0).range(0.5, -0.5, mound_high, mound_low).add(base_terrain).add_value(0.5);
+        let freq = 0.0313;
+        let freq = Frequency {
+            x: freq,
+            y: freq * 1.5,
+            z: freq,
+        };
+        let high = Noise::perlin(freq)
+            .seed(seed as u32 + 1239480234)
+            .fbm(6, 0.5, 2.0);
+        let low = Noise::perlin(freq)
+            .seed(seed as u32 + 2239482)
+            .fbm(6, 0.5, 2.0);
 
-        //let freq = 1.0/150.0;
-        //let terrain_shape = Noise::simplex(0.0, seed + 6).with_frequency(freq, freq * 0.5, freq).fbm(5, 0.5, 2.0);
-        //let terrain_shape = terrain_shape.clone().range(0.5, -0.0, mound.clone(), base_terrain);
-        ////let terrain_shape = terrain_shape.range(0.8, 0.7, mound.clone().add_value(0.4), terrain_shape_low);
-
-        let freq = 0.005;
-        let continents = Noise::perlin(freq, seed)
-            .with_frequency(freq, 0.0, freq)
-            .fbm(6, 0.5, 2.0)
-            // Increase so less of the world is sea
-            .add_value(0.25)
-            // Reduce height of contintents to be between -10%/5% of MAX_HEIGHT
-            .clamp(-0.1, 0.05);
-
-        let freq = 1.0 / 128.0;
-        let terrain_height = Noise::perlin(freq, seed + 1)
-            .with_frequency(freq, 0.0, freq)
-            .fbm(5, 0.5, 2.0)
-            // Increase so less of the terrain is flat
-            .add_value(0.5)
-            // Move to range 0.5..1.5, see application for how it works
-            .clamp(0.0, 1.0)
-            .add_value(0.5);
-
-        // When out at sea bottom out the terrain height gradually from the shore, so big
-        // landmasses don't poke out.
-        let terrain_height =
-            continents
-                .clone()
-                .range(0.0, -0.05, terrain_height, Noise::constant(0.5));
-
-        let freq = 1.0 / 2.0f32.powi(8);
-        let high = Noise::perlin(freq, seed + 2).fbm(4, 0.5, 2.0);
-        let low = Noise::perlin(freq, seed + 3).fbm(4, 0.5, 2.0);
-
+        // NOTE: Because of interpolation the noise is stretched. 4x horizontally and 8x
+        // vertically.
+        //
         // High and low are switched between to create sudden changes in terrain elevation.
-        //let freq = 1.0/92.0;
-        let freq = 1.0 / 2.0f32.powi(9);
-        let terrain_shape = Noise::perlin(freq, seed + 4)
-            .fbm(8, 0.5, 2.0)
-            .range(0.1, -0.1, high, low)
-            .mul_value(2.0);
+        //let freq = 0.03379;
+        // let freq = 1.0 / 2.0f32.powi(4);
+        let terrain_shape = Noise::simplex(Frequency {
+            x: freq.x * 1.5,
+            y: freq.y * 1.5 * 0.5,
+            z: freq.z * 1.5,
+        })
+        .seed(seed as u32 + 3923480239)
+        .fbm(8, 0.5, 2.0)
+        .range(0.00, 0.02, low, high);
+        // let terrain_shape = high;
 
         // This is a failed attempt at making snaking tunnels. The idea is to generate 2d noise,
         // abs it, then use the values under some threshold as the direction of the tunnels. To
-        // translate it into 3d, a 3d noise is generated through the same procedure, and overlayed
+        // translate it into 3d, a 3d noise is generated through the same procedure, and overlaid
         // on the 2d noise. When you take the absolute value of 3d noise and threshold it, it
         // creates sheets, instead of lines. The overlay between the sheets and the lines of the 2d
         // noise create the tunnels, where the 2d noise effectively constitute the range
@@ -112,21 +146,33 @@ impl Earth {
         //    );
 
         // Visualization: https://www.shadertoy.com/view/stccDB
-        let freq = 0.01;
-        let cave_main = Noise::perlin(freq, seed + 5)
-            .with_frequency(freq, freq * 2.0, freq)
-            .fbm(3, 0.5, 2.0)
-            .square();
-        let cave_main_2 = Noise::perlin(freq, seed + 6)
-            .with_frequency(freq, freq * 2.0, freq)
-            .fbm(3, 0.5, 2.0)
-            .square();
+        // let freq = 0.01;
+        // let cave_main = Noise::perlin(fmc_noise::Frequency {
+        //     x: freq,
+        //     y: freq * 2.0,
+        //     z: freq,
+        // })
+        // .seed(seed as u32 + 5)
+        // .fbm(3, 0.5, 2.0)
+        // .square();
+        // let cave_main_2 = Noise::perlin(fmc_noise::Frequency {
+        //     x: freq,
+        //     y: freq * 2.0,
+        //     z: freq,
+        // })
+        // .seed(seed as u32 + 6)
+        // .fbm(3, 0.5, 2.0)
+        // .square();
+        // Only generates caves below the continent height so that they're not exposed. I messed up
+        // the chunk loading stuff somewhat so when it finds a cave it goes all the way to the
+        // bottom of it...
         let caves = continents.clone().range(
             // TODO: These numbers are slightly below the continents max because I implemented
             // range as non-inclusive.
             0.049,
             0.049,
-            cave_main.add(cave_main_2),
+            //cave_main.add(cave_main_2),
+            Noise::constant(1.0),
             Noise::constant(1.0),
         );
 
@@ -141,58 +187,62 @@ impl Earth {
     }
 
     fn generate_terrain(&self, chunk_position: IVec3, chunk: &mut Chunk) {
-        let (mut terrain_shape, _, _) = self.terrain_shape.generate_3d(
-            chunk_position.x as f32,
-            chunk_position.y as f32,
-            chunk_position.z as f32,
-            Chunk::SIZE,
-            Chunk::SIZE + Y_OFFSET,
-            Chunk::SIZE,
+        const WIDTH_FACTOR: usize = 4;
+        const HEIGHT_FACTOR: usize = 8;
+        const INTERPOLATION_WIDTH: usize = Chunk::SIZE / WIDTH_FACTOR + 1;
+        const INTERPOLATION_HEIGHT: usize = Chunk::SIZE / HEIGHT_FACTOR + 2;
+
+        let chunk_x = (chunk_position.x / (WIDTH_FACTOR as i32)) as f32;
+        let chunk_y = (chunk_position.y / (HEIGHT_FACTOR as i32)) as f32;
+        let chunk_z = (chunk_position.z / (WIDTH_FACTOR as i32)) as f32;
+        let (mut terrain, _, _) = self.terrain_shape.generate_3d(
+            chunk_x,
+            chunk_y,
+            chunk_z,
+            // More is needed in each direction for interpolation.
+            INTERPOLATION_WIDTH,
+            INTERPOLATION_HEIGHT,
+            INTERPOLATION_WIDTH,
         );
 
-        let (base_height, _, _) = self.continents.generate_3d(
-            chunk_position.x as f32,
-            0.0,
-            chunk_position.z as f32,
-            Chunk::SIZE,
-            1,
-            Chunk::SIZE,
+        let (base_height, _, _) =
+            self.continents
+                .generate_2d(chunk_x, chunk_z, INTERPOLATION_WIDTH, INTERPOLATION_WIDTH);
+
+        let (terrain_height, _, _) = self.terrain_height.generate_2d(
+            chunk_x,
+            chunk_z,
+            INTERPOLATION_WIDTH,
+            INTERPOLATION_WIDTH,
         );
 
-        let (terrain_height, _, _) = self.terrain_height.generate_3d(
-            chunk_position.x as f32,
-            0.0,
-            chunk_position.z as f32,
-            Chunk::SIZE,
-            1,
-            Chunk::SIZE,
-        );
-
-        for x in 0..Chunk::SIZE {
-            for z in 0..Chunk::SIZE {
-                let index = x << 4 | z;
-                let base_height = base_height[index] * MAX_HEIGHT as f32;
+        for x in 0..INTERPOLATION_WIDTH {
+            for z in 0..INTERPOLATION_WIDTH {
+                let index = x * INTERPOLATION_WIDTH + z;
+                let base_height = base_height[index];
                 let terrain_height = terrain_height[index];
-                for y in 0..Chunk::SIZE + Y_OFFSET {
-                    // Amount the density should be decreased by per block above the base height
-                    // for the maximum height to be MAX_HEIGHT.
-                    // MAX_HEIGHT * DECREMENT / terrain_height_max = 1
-                    const DECREMENT: f32 = 1.5 / MAX_HEIGHT as f32;
-                    let mut compression = ((chunk_position.y + y as i32) as f32 - base_height)
+                for y in 0..INTERPOLATION_HEIGHT {
+                    // Amount the density should be decreased by per block above the base height.
+                    const DECREMENT: f32 = 0.015;
+                    let mut compression = ((chunk_position.y + (y * HEIGHT_FACTOR) as i32) as f32
+                        - base_height)
                         * DECREMENT
                         / terrain_height;
                     if compression < 0.0 {
                         // Below surface, extra compression
-                        compression *= 3.0;
+                        compression *= 4.0;
                     }
-                    let index = x * (Chunk::SIZE * (Chunk::SIZE + Y_OFFSET))
-                        + z * (Chunk::SIZE + Y_OFFSET)
+                    let index = x * (INTERPOLATION_WIDTH * INTERPOLATION_HEIGHT)
+                        + z * INTERPOLATION_HEIGHT
                         + y;
+
                     // Decrease density if above base height, increase if below
-                    terrain_shape[index] -= compression;
+                    terrain[index] -= compression;
                 }
             }
         }
+
+        let terrain_shape = interpolate(&terrain);
 
         chunk.blocks = vec![0; Chunk::SIZE.pow(3)];
 
@@ -202,15 +252,9 @@ impl Earth {
             for z in 0..Chunk::SIZE {
                 let mut layer = 0;
 
-                let base_height = base_height[x << 4 | z] * MAX_HEIGHT as f32;
-
                 // Find how deep we are from above chunk.
-                for y in Chunk::SIZE..Chunk::SIZE + Y_OFFSET {
-                    // TODO: This needs to be converted to order xzy in simdnoise fork to make all
-                    // access contiguous.
-                    let block_index = x * (Chunk::SIZE * (Chunk::SIZE + Y_OFFSET))
-                        + z * (Chunk::SIZE + Y_OFFSET)
-                        + y;
+                for y in Chunk::SIZE..CHUNK_HEIGHT {
+                    let block_index = x * (Chunk::SIZE * CHUNK_HEIGHT) + z * CHUNK_HEIGHT + y;
                     let density = terrain_shape[block_index];
 
                     if density <= 0.0 {
@@ -227,9 +271,7 @@ impl Earth {
                 for y in (0..Chunk::SIZE).rev() {
                     let block_height = chunk_position.y + y as i32;
 
-                    let block_index = x * (Chunk::SIZE * (Chunk::SIZE + Y_OFFSET))
-                        + z * (Chunk::SIZE + Y_OFFSET)
-                        + y;
+                    let block_index = x * (Chunk::SIZE * CHUNK_HEIGHT) + z * CHUNK_HEIGHT + y;
                     let density = terrain_shape[block_index];
 
                     let block = if density <= 0.0 {
@@ -246,7 +288,7 @@ impl Earth {
                     } else if layer > 3 {
                         layer += 1;
                         biome.bottom_layer_block
-                    } else if block_height < 2 && base_height < 2.0 {
+                    } else if block_height < 2 {
                         layer += 1;
                         biome.sand
                     } else {
@@ -305,94 +347,95 @@ impl Earth {
     }
 
     fn generate_features(&self, chunk_position: IVec3, chunk: &mut Chunk) {
-        // TODO: It should be unique to each chunk but I don't know how.
-        let seed = self
-            .seed
-            .overflowing_add(chunk_position.x.pow(2))
-            .0
-            .overflowing_add(chunk_position.z)
-            .0;
-        let mut rng = rand::rngs::StdRng::seed_from_u64(seed as u64);
-
         let air = Blocks::get().get_id("air");
+        let surface = Surface::new(chunk, air);
 
-        // TODO: This should be done at terrain generation, but it clutters the code and it's in
-        // flux. Meanwhile, it is done here. An entire extra scan of the chunk, and it can't tell
-        // if it's the surface if it's the topmost block in a column.
-        //
-        // The surface contains the first block from the top that is not air for each block column
-        // of the chunk.
-        let mut surface = vec![None; Chunk::SIZE.pow(2)];
-        for (column_index, block_column) in chunk.blocks.chunks(Chunk::SIZE).enumerate() {
-            let mut air_encountered = false;
-            for (y_index, block_id) in block_column.into_iter().enumerate().rev() {
-                if air_encountered && *block_id != air {
-                    // The 2d surface stores the index in the 3d chunk and the block. The
-                    // bitshifting just converts it to a chunk index. See 'Chunk::Index' if
-                    // wondering what it means.
-                    surface[column_index] = Some((y_index, *block_id));
-                    break;
-                }
-                if *block_id == air {
-                    air_encountered = true;
-                }
-            }
-        }
+        // x position is left 32 bits and z position the right 32 bits. z must be converted to u32
+        // first because it will just fill the left 32 bits with junk. World seed is used to change
+        // which chunks are next to each other.
+        let seed = ((chunk_position.x as u64) << 32 | chunk_position.z as u32 as u64)
+            .overflowing_mul(self.seed)
+            .0;
+        let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
 
         let biome = self.biomes.get_biome();
 
         for blueprint in biome.blueprints.iter() {
-            let terrain_feature = blueprint.construct(chunk_position, &surface, &mut rng);
-
-            if terrain_feature.blocks.is_empty() {
-                continue;
-            }
-
-            terrain_feature.apply(chunk, chunk_position);
-
-            chunk.terrain_features.push(terrain_feature);
+            blueprint.construct(chunk_position, chunk, &surface, &mut rng);
         }
     }
 }
 
-impl TerrainGenerator for Earth {
-    // TODO: This takes ~1ms, way too slow. The simd needs to be inlined, the function call
-    // overhead is 99% of the execution time I'm guessing. When initially benchmarking the noise
-    // lib I remember using a simple 'add(some_value)' spiked execution time by 33/50%, it
-    // corresponds to one extra simd instruction, compared to the hundreds of instructions of the
-    // noise it is applied to.
-    fn generate_chunk(&self, chunk_position: IVec3) -> Chunk {
-        let mut chunk = Chunk::default();
+const CHUNK_HEIGHT: usize = Chunk::SIZE + 8;
 
-        let air = Blocks::get().get_id("air");
-        if MAX_HEIGHT < chunk_position.y {
-            // Don't waste time generating if it is guaranteed to be air.
-            chunk.make_uniform(air);
-        } else {
-            self.generate_terrain(chunk_position, &mut chunk);
+// We interpolate from a 4x3x4 to 16x24x16. 24 because we need some of the blocks above the
+// chunk to know if we need to place surface blocks. Note how it affects the noise
+// frequency. It is effectively 4x(8x vertically) since we sample closer together.
+//
+// NOTE: This is useful beyond the performance increase.
+// 1. 3d noise tends to create small floaters that don't look good.
+// 2. Even with complex noise compositions it's very easy to perceive regularity in it.
+//    This breaks it up, while providing better continuity.
+fn interpolate(noise: &Vec<f32>) -> Vec<f32> {
+    const WIDTH: usize = Chunk::SIZE / 4;
+    const HEIGHT: usize = CHUNK_HEIGHT / 8;
+    const DEPTH: usize = Chunk::SIZE / 4;
 
-            // TODO: Might make sense to test against water too.
-            //
-            // Test for air chunk uniformity early so we can break and elide the other generation
-            // functions. This makes it so all other chunks that are uniform with another type of
-            // block get stored as full size chunks. They are assumed to be very rare.
-            let mut uniform = true;
-            for block in chunk.blocks.iter() {
-                if *block != air {
-                    uniform = false;
-                    break;
+    fn index(x: usize, y: usize, z: usize) -> usize {
+        return x * (DEPTH + 1) * (HEIGHT + 1) + z * (HEIGHT + 1) + y;
+    }
+
+    let mut result = vec![0.0; Chunk::SIZE * CHUNK_HEIGHT * Chunk::SIZE];
+
+    for x_noise in 0..WIDTH {
+        for z_noise in 0..DEPTH {
+            for y_noise in 0..HEIGHT {
+                let mut back_left = noise[index(x_noise + 0, y_noise + 0, z_noise + 0)];
+                let mut front_left = noise[index(x_noise + 0, y_noise + 0, z_noise + 1)];
+                let mut back_right = noise[index(x_noise + 1, y_noise + 0, z_noise + 0)];
+                let mut front_right = noise[index(x_noise + 1, y_noise + 0, z_noise + 1)];
+                let back_left_increment =
+                    (noise[index(x_noise + 0, y_noise + 1, z_noise + 0)] - back_left) * 0.125;
+                let front_left_increment =
+                    (noise[index(x_noise + 0, y_noise + 1, z_noise + 1)] - front_left) * 0.125;
+                let back_right_increment =
+                    (noise[index(x_noise + 1, y_noise + 1, z_noise + 0)] - back_right) * 0.125;
+                let front_right_increment =
+                    (noise[index(x_noise + 1, y_noise + 1, z_noise + 1)] - front_right) * 0.125;
+
+                for y_index in 0..8 {
+                    let y = y_noise * 8 + y_index;
+
+                    let back_increment = (back_right - back_left) * 0.25;
+                    let front_increment = (front_right - front_left) * 0.25;
+
+                    let mut back = back_left;
+                    let mut front = front_left;
+
+                    for x_index in 0..WIDTH {
+                        let x = x_noise * WIDTH + x_index;
+
+                        let bottom_increment = (front - back) * 0.25;
+                        let mut density = back;
+
+                        for z_index in 0..DEPTH {
+                            let z = z_noise * WIDTH + z_index;
+                            result[x * Chunk::SIZE * CHUNK_HEIGHT + z * CHUNK_HEIGHT + y] = density;
+                            density += bottom_increment;
+                        }
+
+                        back += back_increment;
+                        front += front_increment;
+                    }
+
+                    back_left += back_left_increment;
+                    front_left += front_left_increment;
+                    back_right += back_right_increment;
+                    front_right += front_right_increment;
                 }
             }
-
-            if uniform {
-                chunk.make_uniform(air);
-                return chunk;
-            }
-
-            self.carve_caves(chunk_position, &mut chunk);
-            self.generate_features(chunk_position, &mut chunk);
         }
-
-        return chunk;
     }
+
+    return result;
 }

@@ -1,6 +1,8 @@
 use fmc::{blocks::Blocks, database::Database, prelude::*, world::WorldMap};
 use serde::{Deserialize, Serialize};
 
+use crate::settings::Settings;
+
 mod biomes;
 pub mod blocks;
 mod terrain_generation;
@@ -17,11 +19,19 @@ impl Plugin for WorldPlugin {
     }
 }
 
-fn setup(mut commands: Commands, database: Res<Database>, blocks: Res<Blocks>) {
+fn setup(
+    mut commands: Commands,
+    database: Res<Database>,
+    blocks: Res<Blocks>,
+    settings: Res<Settings>,
+) {
     let properties = WorldProperties::load(database).unwrap_or(WorldProperties::default());
     commands.insert_resource(properties);
 
-    commands.insert_resource(WorldMap::new(terrain_generation::Earth::new(0, &blocks)));
+    commands.insert_resource(WorldMap::new(terrain_generation::Earth::new(
+        settings.seed,
+        &blocks,
+    )));
 }
 
 fn save_world_properties(database: Res<Database>, properties: Res<WorldProperties>) {

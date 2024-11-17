@@ -7,7 +7,7 @@ pub struct Settings {
     /// Name of the world that should be loaded
     pub database_path: String,
     /// Seed used for terrain generation
-    pub seed: i32,
+    pub seed: u64,
     /// Should pvp be enabled
     pub pvp: bool,
     /// The max render distance the server will provide for.
@@ -18,7 +18,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             database_path: "world.sqlite".to_owned(),
-            seed: 0,
+            seed: 1,
             pvp: false,
             render_distance: 16,
         }
@@ -62,9 +62,9 @@ impl Settings {
                     server_settings.database_path = "./".to_owned() + value + ".sqlite";
                 }
                 "seed" => {
-                    let value = value.parse::<i32>().unwrap_or_else(|_| {
+                    let value = value.parse::<u64>().unwrap_or_else(|_| {
                         panic!(
-                            "Server property 'seed' must be a positive number, cannot be: {}",
+                            "Server property 'seed' must be a positive number below 18 * 10¹⁸, cannot be: {}",
                             value
                         )
                     });

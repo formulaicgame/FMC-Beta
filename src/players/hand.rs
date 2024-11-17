@@ -434,7 +434,6 @@ fn handle_left_clicks(
                 (block_position, block_id)
             }
         } else if let Some((model_position, model_block_id, _)) = model_hit {
-            dbg!(model_position);
             (model_position, model_block_id)
         } else if let Some((block_position, block_id, _, _)) = block_hit {
             (block_position, block_id)
