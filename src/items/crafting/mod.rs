@@ -127,7 +127,10 @@ pub struct CraftingGrid(Vec<ItemStack>);
 
 impl CraftingGrid {
     pub fn with_size(size: usize) -> Self {
-        Self(vec![ItemStack::default(); size])
+        let mut grid = Vec::with_capacity(size);
+        grid.resize_with(size, ItemStack::default);
+
+        Self(grid)
     }
 }
 

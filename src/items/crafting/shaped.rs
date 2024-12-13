@@ -93,7 +93,7 @@ impl Recipe {
             .filter(|x| !x.is_empty())
             .zip(self.required_amount.iter().flatten().filter(|&x| *x > 0))
             .for_each(|(item_stack, required)| {
-                item_stack.subtract(required * amount);
+                item_stack.take(required * amount);
             });
 
         return Some((self.output_item.clone(), amount * self.output_amount));

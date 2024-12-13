@@ -2,8 +2,9 @@ use fmc::{
     blocks::{BlockId, Blocks},
     items::Items,
     models::Models,
+    players::{Player, Target},
     prelude::*,
-    world::BlockUpdate,
+    world::{BlockUpdate, WorldMap},
 };
 
 use super::{GroundItemBundle, ItemUses, UsableItems};
@@ -46,6 +47,8 @@ fn use_hoe(
     mut commands: Commands,
     items: Res<Items>,
     models: Res<Models>,
+    world_map: Res<WorldMap>,
+    player_query: Query<&Target, With<Player>>,
     mut hoe_uses: Query<(&mut ItemUses, &HoeConfig), Changed<ItemUses>>,
     mut block_update_writer: EventWriter<BlockUpdate>,
 ) {
@@ -53,8 +56,12 @@ fn use_hoe(
         return;
     };
 
-    for hoe_use in uses.read() {
-        let Some((block_id, block_position)) = hoe_use.block else {
+    for player_entity in uses.read() {
+        let Target::Block { block_position, .. } = player_query.get(player_entity).unwrap() else {
+            continue;
+        };
+
+        let Some(block_id) = world_map.get_block(*block_position) else {
             continue;
         };
 
@@ -71,12 +78,12 @@ fn use_hoe(
                 item_config,
                 models.get_by_id(item_config.model_id),
                 1,
-                (block_position + IVec3::Y).as_dvec3(),
+                (*block_position + IVec3::Y).as_dvec3(),
             ));
         }
 
         block_update_writer.send(BlockUpdate::Change {
-            position: block_position,
+            position: *block_position,
             block_id: Blocks::get().get_id("soil"),
             block_state: None,
         });

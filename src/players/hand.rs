@@ -2,38 +2,39 @@ use std::collections::HashMap;
 
 use fmc::{
     bevy::math::DVec3,
-    blocks::{BlockFace, BlockId, BlockPosition, BlockRotation, BlockState, Blocks, Friction},
+    blocks::{BlockConfig, BlockFace, BlockId, BlockPosition, Blocks},
     items::Items,
     models::{Model, ModelAnimations, ModelBundle, ModelMap, ModelVisibility, Models},
-    networking::NetworkMessage,
+    networking::{NetworkMessage, Server},
     physics::shapes::Aabb,
-    players::{Camera, Player},
+    players::{Camera, Player, Target},
     prelude::*,
     protocol::messages,
     utils,
-    world::{chunk::Chunk, BlockUpdate, WorldMap},
+    world::{BlockUpdate, ChunkSubscriptions, WorldMap},
 };
 
 use crate::{
     items::{GroundItemBundle, ItemUses, RegisterItemUse, UsableItems},
-    players::{EquippedItem, Inventory},
+    players::Inventory,
 };
 
 pub struct HandPlugin;
 impl Plugin for HandPlugin {
     fn build(&self, app: &mut App) {
-        app.add_event::<BlockBreakingEvent>().add_systems(
-            Update,
-            (
-                handle_left_clicks,
-                handle_right_clicks.in_set(RegisterItemUse),
-                break_blocks.after(handle_left_clicks),
-            ),
-        );
+        app.insert_resource(BlockBreakingEvents::default())
+            .add_systems(
+                Update,
+                (
+                    handle_left_clicks,
+                    handle_right_clicks.in_set(RegisterItemUse),
+                    break_blocks.after(handle_left_clicks),
+                ),
+            );
     }
 }
 
-/// Together with an Aabb this tracks when a player right clicks an entity
+/// Tracks which players have right clicked the entity
 #[derive(Component, Default)]
 pub struct HandInteractions {
     player_entities: Vec<Entity>,
@@ -49,12 +50,38 @@ impl HandInteractions {
     }
 }
 
-#[derive(Event, Hash, Eq, PartialEq)]
-struct BlockBreakingEvent {
-    player_entity: Entity,
-    block_position: IVec3,
-    block_id: BlockId,
+fn handle_left_clicks(
+    mut clicks: EventReader<NetworkMessage<messages::LeftClick>>,
+    world_map: Res<WorldMap>,
+    player_query: Query<(&Target, &Camera, &GlobalTransform), With<Player>>,
+    mut block_breaking_events: ResMut<BlockBreakingEvents>,
+) {
+    for click in clicks.read() {
+        let (target, camera, transform) = player_query.get(click.player_entity).unwrap();
+
+        let camera_position = transform.translation() + camera.translation;
+
+        match target {
+            Target::Block {
+                block_position,
+                block_face,
+                distance,
+                ..
+            } => {
+                let hit_position = camera_position + camera.forward() * *distance;
+                let block_id = world_map.get_block(*block_position).unwrap();
+                block_breaking_events.insert(
+                    *block_position,
+                    (click.player_entity, block_id, *block_face, hit_position),
+                );
+            }
+            _ => continue,
+        }
+    }
 }
+
+#[derive(Resource, Deref, DerefMut, Default)]
+struct BlockBreakingEvents(HashMap<IVec3, (Entity, BlockId, BlockFace, DVec3)>);
 
 // Keeps the state of how far along a block is to breaking
 #[derive(Debug)]
@@ -62,53 +89,48 @@ struct BreakingBlock {
     model_entity: Entity,
     progress: f32,
     prev_hit: std::time::Instant,
+    particle_timer: Timer,
 }
 
 #[derive(Component)]
 struct BreakingBlockMarker;
 
-// TODO: Take into account player's equipped item
 fn break_blocks(
     mut commands: Commands,
+    time: Res<Time>,
+    net: Res<Server>,
     items: Res<Items>,
     models: Res<Models>,
-    player_equipped_item_query: Query<(&Inventory, &EquippedItem), With<Player>>,
+    chunk_subscriptions: Res<ChunkSubscriptions>,
+    inventory_query: Query<&Inventory, With<Player>>,
     mut model_query: Query<(&mut Model, &mut ModelVisibility), With<BreakingBlockMarker>>,
     mut block_update_writer: EventWriter<BlockUpdate>,
-    mut block_breaking_events: EventReader<BlockBreakingEvent>,
+    mut block_breaking_events: ResMut<BlockBreakingEvents>,
     mut being_broken: Local<HashMap<IVec3, BreakingBlock>>,
 ) {
     let now = std::time::Instant::now();
 
     let blocks = Blocks::get();
 
-    for breaking_event in block_breaking_events.read() {
-        // Guard against duplicate events, many left clicks often arrive at once.
-        if let Some(breaking_block) = being_broken.get(&breaking_event.block_position) {
-            if now == breaking_block.prev_hit {
-                continue;
-            }
-        }
+    for (block_position, (player_entity, block_id, block_face, hit_position)) in
+        block_breaking_events.drain()
+    {
+        let block_config = blocks.get_config(&block_id);
 
-        let (inventory, equipped_item_index) = player_equipped_item_query
-            .get(breaking_event.player_entity)
-            .unwrap();
-        let equipped_item_stack = &inventory[equipped_item_index.0];
-        let tool = if let Some(item) = equipped_item_stack.item() {
-            let equipped_item_config = items.get_config(&item.id);
-            equipped_item_config.tool.as_ref()
+        let Some(hardness) = block_config.hardness else {
+            // Unbreakable block
+            continue;
+        };
+
+        let inventory = inventory_query.get(player_entity).unwrap();
+
+        let tool_config = if let Some(item) = inventory.held_item_stack().item() {
+            Some(items.get_config(&item.id))
         } else {
             None
         };
 
-        let block_config = blocks.get_config(&breaking_event.block_id);
-
-        // Unbreakable block
-        if block_config.hardness.is_none() {
-            continue;
-        }
-
-        if let Some(breaking_block) = being_broken.get_mut(&breaking_event.block_position) {
+        let broken = if let Some(breaking_block) = being_broken.get_mut(&block_position) {
             if (now - breaking_block.prev_hit).as_secs_f32() > 0.05 {
                 // The interval between two clicks needs to be short in order to be counted as
                 // holding the button down.
@@ -116,19 +138,34 @@ fn break_blocks(
                 continue;
             }
 
+            if breaking_block.particle_timer.finished() {
+                let chunk_position = utils::world_position_to_chunk_position(block_position);
+                if let Some(subscribers) = chunk_subscriptions.get_subscribers(&chunk_position) {
+                    if let Some(particle_effect) =
+                        hit_particles(block_config, block_face, hit_position)
+                    {
+                        net.send_many(subscribers, particle_effect);
+                    }
+                }
+            }
+
+            // The timer is set to finished on the first hit to show particles immediately.
+            // If we tick before checking if it is finished it will set itself to unfinished again.
+            breaking_block.particle_timer.tick(time.delta());
+
             let (mut model, mut visibility) =
                 model_query.get_mut(breaking_block.model_entity).unwrap();
 
             let prev_progress = breaking_block.progress;
 
-            // Hardness is 'time to break'. We know it's Some because only blocks with hardness can
-            // be hit.
-            breaking_block.progress += (now - breaking_block.prev_hit).as_secs_f32()
-                / block_config.hardness.unwrap()
-                * tool.map(|t| t.efficiency).unwrap_or(1.0);
+            let efficiency = if let Some(config) = tool_config {
+                config.tool_efficiency(block_config)
+            } else {
+                1.0
+            };
+            breaking_block.progress +=
+                (now - breaking_block.prev_hit).as_secs_f32() / hardness * efficiency;
             breaking_block.prev_hit = now;
-
-            let progress = breaking_block.progress;
 
             let Model::Custom {
                 ref mut material_parallax_texture,
@@ -138,31 +175,10 @@ fn break_blocks(
                 unreachable!()
             };
 
+            let progress = breaking_block.progress;
+
             // Ordering from high to low lets it skip stages.
-            if progress >= 1.0 {
-                block_update_writer.send(BlockUpdate::Change {
-                    position: breaking_event.block_position,
-                    block_id: blocks.get_id("air"),
-                    block_state: None,
-                });
-
-                let block_config = blocks.get_config(&breaking_event.block_id);
-                let (dropped_item_id, count) =
-                    match block_config.drop(tool.map(|t| t.name.as_str())) {
-                        Some(drop) => drop,
-                        None => continue,
-                    };
-                let item_config = items.get_config(&dropped_item_id);
-                let model_config = models.get_by_id(item_config.model_id);
-
-                commands.spawn(GroundItemBundle::new(
-                    dropped_item_id,
-                    item_config,
-                    model_config,
-                    count,
-                    breaking_event.block_position.as_dvec3(),
-                ));
-            } else if prev_progress < 0.9 && progress > 0.9 {
+            if prev_progress < 0.9 && progress > 0.9 {
                 *material_parallax_texture = Some("blocks/breaking_9.png".to_owned());
             } else if prev_progress < 0.8 && progress > 0.8 {
                 *material_parallax_texture = Some("blocks/breaking_8.png".to_owned());
@@ -181,16 +197,35 @@ fn break_blocks(
             } else if prev_progress < 0.1 && progress > 0.1 {
                 visibility.is_visible = true;
             }
-        } else if block_config.hardness.unwrap() == 0.0 {
-            // Blocks that break instantly
+
+            if progress >= 1.0 {
+                true
+            } else {
+                continue;
+            }
+        } else {
+            false
+        };
+
+        // When hardness is zero it will break instantly
+        if broken || hardness == 0.0 {
+            let chunk_position = utils::world_position_to_chunk_position(block_position);
+            if let Some(subscribers) = chunk_subscriptions.get_subscribers(&chunk_position) {
+                if let Some(particle_effect) =
+                    break_particles(block_config, block_position.as_dvec3() + DVec3::splat(0.5))
+                {
+                    net.send_many(subscribers, particle_effect);
+                }
+            }
+
             block_update_writer.send(BlockUpdate::Change {
-                position: breaking_event.block_position,
+                position: block_position,
                 block_id: blocks.get_id("air"),
                 block_state: None,
             });
 
-            let block_config = blocks.get_config(&breaking_event.block_id);
-            let (dropped_item_id, count) = match block_config.drop(tool.map(|t| t.name.as_str())) {
+            let block_config = blocks.get_config(&block_id);
+            let (dropped_item_id, count) = match block_config.drop(tool_config) {
                 Some(drop) => drop,
                 None => continue,
             };
@@ -202,18 +237,8 @@ fn break_blocks(
                 item_config,
                 model_config,
                 count,
-                breaking_event.block_position.as_dvec3(),
+                block_position.as_dvec3() + DVec3::splat(0.5),
             ));
-
-            // Guard against the block being broken again on the same tick
-            being_broken.insert(
-                breaking_event.block_position,
-                BreakingBlock {
-                    model_entity: commands.spawn_empty().id(),
-                    progress: 1.0,
-                    prev_hit: now,
-                },
-            );
         } else {
             let model_entity = commands
                 .spawn(ModelBundle {
@@ -222,19 +247,25 @@ fn break_blocks(
                     // The model shouldn't show until some progress has been made
                     visibility: ModelVisibility { is_visible: false },
                     global_transform: GlobalTransform::default(),
-                    transform: Transform::from_translation(
-                        breaking_event.block_position.as_dvec3(),
-                    ),
+                    transform: Transform::from_translation(block_position.as_dvec3()),
                 })
                 .insert(BreakingBlockMarker)
                 .id();
 
+            let mut particle_timer = Timer::new(
+                std::time::Duration::from_secs_f32(0.1),
+                TimerMode::Repeating,
+            );
+            // Tick the timer so the first particles show up immediately
+            particle_timer.tick(std::time::Duration::from_secs(1));
+
             being_broken.insert(
-                breaking_event.block_position,
+                block_position,
                 BreakingBlock {
                     model_entity,
                     progress: 0.0,
-                    prev_hit: now,
+                    prev_hit: std::time::Instant::now(),
+                    particle_timer,
                 },
             );
         }
@@ -252,6 +283,65 @@ fn break_blocks(
             return true;
         }
     });
+}
+
+fn hit_particles(
+    block_config: &BlockConfig,
+    block_face: BlockFace,
+    position: DVec3,
+) -> Option<messages::ParticleEffect> {
+    let Some(particle_texture) = block_config.particle_texture(block_face) else {
+        return None;
+    };
+
+    let direction = block_face.shift_position(IVec3::ZERO).as_vec3();
+    let spawn_offset = Vec3::select(direction.cmpeq(Vec3::ZERO), Vec3::splat(0.4), Vec3::ZERO);
+
+    const VELOCITY: Vec3 = Vec3::new(2.5, 1.5, 2.5);
+    let mut min_velocity = Vec3::select(direction.cmpeq(Vec3::ZERO), -VELOCITY, Vec3::ZERO);
+    min_velocity.y = 0.0;
+
+    let mut max_velocity = -min_velocity;
+    max_velocity += direction * 2.0;
+    max_velocity.y = max_velocity.y.max(VELOCITY.y);
+
+    // Need to offset so the particle's aabb won't be inside the block
+    let block_face_offset = block_face.shift_position(IVec3::ZERO).as_dvec3() * 0.15;
+
+    Some(messages::ParticleEffect::Explosion {
+        position: position + block_face_offset,
+        spawn_offset,
+        size_range: (0.1, 0.2),
+        min_velocity,
+        max_velocity,
+        texture: Some(particle_texture.to_owned()),
+        color: block_config.particle_color(),
+        lifetime: (0.3, 1.0),
+        count: 2,
+    })
+}
+
+fn break_particles(
+    block_config: &BlockConfig,
+    position: DVec3,
+) -> Option<messages::ParticleEffect> {
+    let Some(particle_texture) = block_config.particle_texture(BlockFace::Bottom) else {
+        return None;
+    };
+
+    const VELOCITY: Vec3 = Vec3::new(7.0, 5.0, 7.0);
+
+    Some(messages::ParticleEffect::Explosion {
+        position,
+        spawn_offset: Vec3::splat(0.2),
+        size_range: (0.2, 0.3),
+        min_velocity: -VELOCITY,
+        max_velocity: VELOCITY,
+        texture: Some(particle_texture.to_owned()),
+        color: block_config.particle_color(),
+        lifetime: (0.3, 1.0),
+        count: 20,
+    })
 }
 
 // TODO: This needs to be built from the model of what it is breaking. Means we have to load and
@@ -349,292 +439,126 @@ fn build_breaking_model() -> Model {
     }
 }
 
-// Left clicks are used for block breaking or attacking.
-// TODO: Need spatial partitioning of item/mobs/players to do hit detection.
-fn handle_left_clicks(
-    mut clicks: EventReader<NetworkMessage<messages::LeftClick>>,
-    world_map: Res<WorldMap>,
-    player_query: Query<(&GlobalTransform, &Camera)>,
-    model_map: Res<ModelMap>,
-    model_query: Query<(Option<&Aabb>, &GlobalTransform, Option<&BlockPosition>), With<Model>>,
-    mut block_breaking_events: EventWriter<BlockBreakingEvent>,
-) {
-    let blocks = Blocks::get();
-
-    for click in clicks.read() {
-        let (player_position, player_camera) = player_query.get(click.player_entity).unwrap();
-
-        let camera_transform = Transform {
-            translation: player_position.translation() + player_camera.translation,
-            rotation: player_camera.rotation,
-            ..default()
-        };
-
-        // Test hits for models in all adjacent chunks.
-        let mut model_hit = None;
-        let chunk_position = utils::world_position_to_chunk_position(
-            player_position.translation().floor().as_ivec3(),
-        );
-        for x_offset in [IVec3::X, IVec3::NEG_X, IVec3::ZERO] {
-            for y_offset in [IVec3::Y, IVec3::NEG_Y, IVec3::ZERO] {
-                for z_offset in [IVec3::Z, IVec3::NEG_Z, IVec3::ZERO] {
-                    let chunk_position = chunk_position
-                        + x_offset * Chunk::SIZE as i32
-                        + y_offset * Chunk::SIZE as i32
-                        + z_offset * Chunk::SIZE as i32;
-                    let Some(model_entities) = model_map.get_entities(&chunk_position) else {
-                        continue;
-                    };
-                    for model_entity in model_entities {
-                        let Ok((_, model_transform, maybe_block)) = model_query.get(*model_entity)
-                        else {
-                            continue;
-                        };
-
-                        let Some(block_position) = maybe_block else {
-                            continue;
-                        };
-
-                        let block_id = world_map.get_block(block_position.0).unwrap();
-                        let block_config = blocks.get_config(&block_id);
-
-                        let Some(hitbox) = &block_config.hitbox else {
-                            continue;
-                        };
-
-                        let Some(distance) = hitbox.ray_intersection(
-                            camera_transform.translation,
-                            camera_transform.forward(),
-                            model_transform.compute_transform(),
-                        ) else {
-                            continue;
-                        };
-
-                        if let Some((_, _, closest_distance)) = model_hit {
-                            if distance < closest_distance {
-                                model_hit = Some((block_position.0, block_id, distance));
-                            }
-                        } else {
-                            model_hit = Some((block_position.0, block_id, distance));
-                        }
-                    }
-                }
-            }
-        }
-
-        let block_hit = world_map.raycast_to_block(&camera_transform, 5.0);
-
-        let (block_position, block_id) = if block_hit.is_some() && model_hit.is_some() {
-            let (model_position, model_block_id, model_distance) = model_hit.unwrap();
-            let (block_position, block_id, _, block_distance) = block_hit.unwrap();
-
-            if model_distance < block_distance {
-                (model_position, model_block_id)
-            } else {
-                (block_position, block_id)
-            }
-        } else if let Some((model_position, model_block_id, _)) = model_hit {
-            (model_position, model_block_id)
-        } else if let Some((block_position, block_id, _, _)) = block_hit {
-            (block_position, block_id)
-        } else {
-            continue;
-        };
-
-        block_breaking_events.send(BlockBreakingEvent {
-            player_entity: click.player_entity,
-            block_position,
-            block_id,
-        });
-    }
-}
-
 fn handle_right_clicks(
     world_map: Res<WorldMap>,
     items: Res<Items>,
     usable_items: Res<UsableItems>,
     model_map: Res<ModelMap>,
-    model_query: Query<(&Aabb, &GlobalTransform), With<Model>>,
-    mut player_query: Query<
-        (&mut Inventory, &EquippedItem, &GlobalTransform, &Camera),
-        With<Player>,
-    >,
+    model_query: Query<(&Aabb, &GlobalTransform), (With<Model>, Without<BlockPosition>)>,
+    mut player_query: Query<(&mut Inventory, &Target, &Camera), With<Player>>,
     mut item_use_query: Query<&mut ItemUses>,
     mut hand_interaction_query: Query<&mut HandInteractions>,
     mut block_update_writer: EventWriter<BlockUpdate>,
     mut clicks: EventReader<NetworkMessage<messages::RightClick>>,
 ) {
     for right_click in clicks.read() {
-        let (mut inventory, equipped_item, player_position, player_camera) =
+        let (mut inventory, target, camera) =
             player_query.get_mut(right_click.player_entity).unwrap();
 
-        let camera_transform = Transform {
-            translation: player_position.translation() + player_camera.translation,
-            rotation: player_camera.rotation,
-            ..default()
+        let mut use_item = || {
+            let equipped_item = &mut inventory.held_item_stack_mut();
+
+            let Some(item) = equipped_item.item() else {
+                return;
+            };
+
+            if let Some(item_use_entity) = usable_items.get(&item.id) {
+                let mut uses = item_use_query.get_mut(*item_use_entity).unwrap();
+                uses.push(right_click.player_entity);
+            }
         };
 
-        let block_hit = world_map.raycast_to_block(&camera_transform, 5.0);
-
-        let block_hit_distance = if let Some((_, _, _, distance)) = block_hit {
-            distance
-        } else {
-            f64::MAX
-        };
-
-        // Test hits for models in all adjacent chunks.
-        let mut model_hit = None;
-        let chunk_position = utils::world_position_to_chunk_position(
-            player_position.translation().floor().as_ivec3(),
-        );
-        for x_offset in [IVec3::X, IVec3::NEG_X, IVec3::ZERO] {
-            for y_offset in [IVec3::Y, IVec3::NEG_Y, IVec3::ZERO] {
-                for z_offset in [IVec3::Z, IVec3::NEG_Z, IVec3::ZERO] {
-                    let chunk_position = chunk_position
-                        + x_offset * Chunk::SIZE as i32
-                        + y_offset * Chunk::SIZE as i32
-                        + z_offset * Chunk::SIZE as i32;
-                    let Some(model_entities) = model_map.get_entities(&chunk_position) else {
-                        continue;
-                    };
-                    for model_entity in model_entities {
-                        let Ok((aabb, model_transform)) = model_query.get(*model_entity) else {
-                            continue;
-                        };
-
-                        let aabb = Aabb {
-                            center: aabb.center + model_transform.translation(),
-                            half_extents: aabb.half_extents,
-                        };
-
-                        let Some(distance) = aabb.ray_intersection(
-                            camera_transform.translation,
-                            camera_transform.forward(),
-                        ) else {
-                            continue;
-                        };
-
-                        if block_hit_distance < distance {
-                            continue;
-                        }
-
-                        if let Some((_, closest_distance)) = model_hit {
-                            if distance < closest_distance {
-                                model_hit = Some((*model_entity, distance));
-                            }
-                        } else {
-                            model_hit = Some((*model_entity, distance));
-                        }
-                    }
+        // TODO: Needs override, shift held = always place block
+        match target {
+            Target::Entity { entity, .. } => {
+                if let Ok(mut interactions) = hand_interaction_query.get_mut(*entity) {
+                    interactions.push(right_click.player_entity);
+                } else {
+                    use_item()
                 }
             }
-        }
-
-        if let Some((model_entity, _distance)) = model_hit {
-            if let Ok(mut hand_interaction) = hand_interaction_query.get_mut(model_entity) {
-                hand_interaction.push(right_click.player_entity);
-            }
-            continue;
-        }
-
-        let Some((block_pos, block_id, block_face, _)) = block_hit else {
-            continue;
-        };
-
-        // TODO: Needs an override, sneak = always place block
-        // If the block can be interacted with, the click always counts as an interaction
-        let (chunk_position, block_index) =
-            utils::world_position_to_chunk_position_and_block_index(block_pos);
-        let chunk = world_map.get_chunk(&chunk_position).unwrap();
-        if let Some(block_entity) = chunk.block_entities.get(&block_index) {
-            if let Ok(mut interactions) = hand_interaction_query.get_mut(*block_entity) {
-                interactions.push(right_click.player_entity);
-                continue;
-            }
-        }
-
-        let equipped_item = &mut inventory[equipped_item.0];
-
-        if equipped_item.is_empty() {
-            continue;
-        }
-
-        let item_id = equipped_item.item().unwrap().id;
-
-        if let Some(item_use_entity) = usable_items.get(&item_id) {
-            let mut uses = item_use_query.get_mut(*item_use_entity).unwrap();
-            uses.push(
-                right_click.player_entity,
-                block_hit.map(|(block_position, block_id, _, _)| (block_id, block_position)),
-            );
-        }
-
-        let blocks = Blocks::get();
-
-        let replaced_block_position = if blocks.get_config(&block_id).replaceable {
-            block_pos
-        } else if let Some(block_id) = world_map.get_block(block_face.shift_position(block_pos)) {
-            if !blocks.get_config(&block_id).replaceable {
-                continue;
-            }
-            block_face.shift_position(block_pos)
-        } else {
-            continue;
-        };
-
-        let item_config = items.get_config(&item_id);
-
-        let Some(block_id) = item_config.block else {
-            continue;
-        };
-
-        equipped_item.subtract(1);
-
-        let block_config = blocks.get_config(&block_id);
-        let block_state = if block_config.placement.rotatable
-            || (block_config.placement.side_transform.is_some()
-                && block_face != BlockFace::Top
-                && block_face != BlockFace::Bottom)
-        {
-            if (block_face == BlockFace::Bottom && block_config.placement.ceiling)
-                || (block_face == BlockFace::Top && block_config.placement.floor)
-            {
-                // If the bottom or top face is clicked it should rotate the block based on the
-                // relative distance to the block clicked so that the block is always facing the
-                // player.
-                let distance = player_position.translation().as_ivec3() - block_pos;
-                let max = IVec2::new(distance.x, distance.z).max_element();
-
-                if max == distance.x {
-                    if distance.x.is_positive() {
-                        Some(BlockState::new(BlockRotation::Once))
+            Target::Block {
+                block_position,
+                distance: _distance,
+                block_face,
+                entity,
+            } => {
+                if let Some(entity) = *entity {
+                    if let Ok(mut interactions) = hand_interaction_query.get_mut(entity) {
+                        // If the block can be interacted with, that takes precedence
+                        interactions.push(right_click.player_entity);
                     } else {
-                        Some(BlockState::new(BlockRotation::Thrice))
-                    }
-                } else if max == distance.z {
-                    if distance.z.is_positive() {
-                        None
-                    } else {
-                        Some(BlockState::new(BlockRotation::Twice))
+                        // Otherwise use the item
+                        use_item();
                     }
                 } else {
-                    unreachable!()
-                }
-            } else if (block_face != BlockFace::Bottom || block_face != BlockFace::Top)
-                && block_config.placement.sides
-            {
-                Some(BlockState::new(block_face.to_rotation()))
-            } else {
-                None
-            }
-        } else {
-            None
-        };
+                    let equipped_item_stack = inventory.held_item_stack_mut();
 
-        block_update_writer.send(BlockUpdate::Change {
-            position: replaced_block_position,
-            block_id,
-            block_state,
-        });
+                    let Some(item) = equipped_item_stack.item() else {
+                        // No item equipped, can't place block
+                        continue;
+                    };
+
+                    let item_config = items.get_config(&item.id);
+
+                    let Some(block_id) = item_config.block else {
+                        // The item isn't bound to a placeable block
+                        continue;
+                    };
+
+                    let blocks = Blocks::get();
+
+                    if !blocks.get_config(&block_id).placeable(*block_face) {
+                        continue;
+                    }
+
+                    let replaced_block_position = if blocks.get_config(&block_id).replaceable {
+                        // Some blocks, like grass, can be replaced instead of placing the new
+                        // block adjacently to it.
+                        *block_position
+                    } else if let Some(block_id) =
+                        world_map.get_block(block_face.shift_position(*block_position))
+                    {
+                        if !blocks.get_config(&block_id).replaceable {
+                            continue;
+                        }
+                        block_face.shift_position(*block_position)
+                    } else {
+                        continue;
+                    };
+
+                    let block_config = blocks.get_config(&block_id);
+                    let block_state =
+                        block_config.placement_rotation(camera.transform(), *block_face);
+
+                    let replaced_aabb = Aabb {
+                        center: replaced_block_position.as_dvec3(),
+                        half_extents: DVec3::splat(0.5),
+                    };
+
+                    // Check that there aren't any entities in the way of the new block
+                    let chunk_position =
+                        utils::world_position_to_chunk_position(replaced_block_position);
+                    if let Some(entities) = model_map.get_entities(&chunk_position) {
+                        for (aabb, global_transform) in model_query.iter_many(entities) {
+                            let mut aabb = aabb.clone();
+                            aabb.center += global_transform.translation();
+                            if aabb.intersects(&replaced_aabb).is_some() {
+                                continue;
+                            }
+                        }
+                    }
+
+                    equipped_item_stack.take(1);
+
+                    block_update_writer.send(BlockUpdate::Change {
+                        position: replaced_block_position,
+                        block_id,
+                        block_state,
+                    });
+                }
+            }
+            _ => continue,
+        }
     }
 }

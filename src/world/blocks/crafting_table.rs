@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use fmc::{
     bevy::ecs::system::EntityCommands,
     blocks::{BlockData, Blocks},
-    interfaces::{HeldInterfaceItem, InterfaceInteractionEvents, RegisterInterfaceProvider},
+    interfaces::{HeldInterfaceStack, InterfaceInteractionEvents, RegisterInterfaceProvider},
     items::{ItemStack, Items},
     networking::Server,
     players::Player,
@@ -124,7 +124,7 @@ fn handle_interface_events(
     registry: Res<CraftingTableRegistry>,
     items: Res<Items>,
     recipes: Res<Recipes>,
-    mut player_query: Query<&mut HeldInterfaceItem, With<Player>>,
+    mut player_query: Query<&mut HeldInterfaceStack, With<Player>>,
     mut input_events: Query<
         (Entity, &mut CraftingTable, &mut InterfaceInteractionEvents),
         Changed<InterfaceInteractionEvents>,
@@ -146,7 +146,7 @@ fn handle_interface_events(
                     let Some(item_stack) = crafting_table.get_mut(*index as usize) else {
                         continue;
                     };
-                    item_stack.transfer(&mut held_item, *quantity);
+                    item_stack.transfer_to(&mut held_item, *quantity);
 
                     crafting_table.build_output_interface(&recipes, &mut interface_update);
                 } else if interface_path.ends_with("output") {
@@ -193,7 +193,7 @@ fn handle_interface_events(
                 let Some(item_stack) = crafting_table.get_mut(*index as usize) else {
                     continue;
                 };
-                held_item.transfer(item_stack, *quantity);
+                held_item.transfer_to(item_stack, *quantity);
 
                 crafting_table.build_output_interface(&recipes, &mut interface_update);
             }

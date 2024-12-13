@@ -51,26 +51,45 @@ enum GameMode {
     Creative,
 }
 
-#[derive(Component, Serialize, Deserialize, Deref, DerefMut, Clone)]
-pub struct Inventory(Vec<ItemStack>);
+#[derive(Component, Serialize, Deserialize, Deref, DerefMut)]
+pub struct Inventory {
+    #[deref]
+    inventory: Vec<ItemStack>,
+    equipped_item: usize,
+}
 
 impl Default for Inventory {
     fn default() -> Self {
-        Self(vec![ItemStack::default(); 36])
+        let capacity = 36;
+        let mut inventory = Vec::with_capacity(capacity);
+        inventory.resize_with(capacity, ItemStack::default);
+
+        Self {
+            inventory,
+            equipped_item: 0,
+        }
     }
 }
 
-/// Helmet, chestplate, leggings, boots in order
-#[derive(Component, Default, Serialize, Deserialize, Clone)]
+impl Inventory {
+    pub fn held_item_stack(&self) -> &ItemStack {
+        &self[self.equipped_item]
+    }
+
+    pub fn held_item_stack_mut(&mut self) -> &mut ItemStack {
+        let index = self.equipped_item;
+        &mut self[index]
+    }
+}
+
+// TODO: Move this into Inventory, no clue why I separated them
+#[derive(Component, Default, Serialize, Deserialize)]
 pub struct Equipment {
     helmet: ItemStack,
     chestplate: ItemStack,
     leggings: ItemStack,
     boots: ItemStack,
 }
-
-#[derive(Component, Default, Serialize, Deserialize)]
-pub struct EquippedItem(pub usize);
 
 /// Default bundle used for new players.
 #[derive(Bundle)]
@@ -81,7 +100,6 @@ pub struct PlayerBundle {
     inventory: Inventory,
     equipment: Equipment,
     crafting_table: CraftingGrid,
-    equipped_item: EquippedItem,
     health: HealthBundle,
     gamemode: GameMode,
 }
@@ -95,7 +113,6 @@ impl Default for PlayerBundle {
             inventory: Inventory::default(),
             equipment: Equipment::default(),
             crafting_table: CraftingGrid::with_size(4),
-            equipped_item: EquippedItem::default(),
             health: HealthBundle::default(),
             gamemode: GameMode::Survival,
         }
@@ -106,7 +123,7 @@ impl From<PlayerSave> for PlayerBundle {
     fn from(save: PlayerSave) -> Self {
         PlayerBundle {
             transform: Transform::from_translation(save.position),
-            camera: Camera(Transform {
+            camera: Camera::new(Transform {
                 translation: save.camera_position,
                 rotation: save.camera_rotation,
                 ..default()
@@ -227,12 +244,12 @@ fn add_players(
 fn save_player_data(
     database: Res<Database>,
     mut network_events: EventReader<NetworkEvent>,
-    players: Query<(
+    mut players: Query<(
         &Player,
         &Transform,
         &Camera,
-        &Inventory,
-        &Equipment,
+        &mut Inventory,
+        &mut Equipment,
         &Health,
     )>,
 ) {
@@ -241,7 +258,8 @@ fn save_player_data(
             continue;
         };
 
-        let Ok((player, transform, camera, inventory, equipment, health)) = players.get(*entity)
+        let Ok((player, transform, camera, mut inventory, mut equipment, health)) =
+            players.get_mut(*entity)
         else {
             continue;
         };
@@ -250,8 +268,9 @@ fn save_player_data(
             position: transform.translation,
             camera_position: camera.translation,
             camera_rotation: camera.rotation,
-            inventory: inventory.clone(),
-            equipment: equipment.clone(),
+            // Since ItemStack is not Clone we replace with new ones.
+            inventory: std::mem::replace(&mut inventory, Inventory::default()),
+            equipment: std::mem::replace(&mut equipment, Equipment::default()),
             health: health.clone(),
         }
         .save(&player.username, &database);

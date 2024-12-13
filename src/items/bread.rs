@@ -5,7 +5,7 @@ use fmc::{
     prelude::*,
 };
 
-use crate::players::{EquippedItem, Inventory};
+use crate::players::Inventory;
 
 use super::{ItemUses, UsableItems};
 
@@ -36,17 +36,16 @@ fn register_bread(
 
 fn eat_bread(
     mut bread_uses: Query<&mut ItemUses, (With<Bread>, Changed<ItemUses>)>,
-    mut player_query: Query<(&mut Inventory, &EquippedItem), With<Player>>,
+    mut player_query: Query<&mut Inventory, With<Player>>,
 ) {
     let Ok(mut uses) = bread_uses.get_single_mut() else {
         return;
     };
 
-    for bread_use in uses.read() {
-        let (mut inventory, equipped_item_index) =
-            player_query.get_mut(bread_use.player_entity).unwrap();
-        let equipped_item = &mut inventory[equipped_item_index.0];
+    for player_entity in uses.read() {
+        let mut inventory = player_query.get_mut(player_entity).unwrap();
+        let held_item = inventory.held_item_stack_mut();
 
-        equipped_item.subtract(1);
+        held_item.take(1);
     }
 }

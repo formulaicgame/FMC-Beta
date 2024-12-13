@@ -12,24 +12,24 @@ use fmc::{
 };
 use rand::Rng;
 
-use crate::players::{EquippedItem, HandInteractions, Inventory};
+use crate::players::{HandInteractions, Inventory};
 
 use super::pathfinding::PathFinder;
 
 pub struct DuckPlugin;
 impl Plugin for DuckPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(
-            Update,
-            (
-                spawn_duck,
-                remove_duck,
-                wander,
-                move_to_pathfinding_goal,
-                beg_for_bread,
-                handle_interactions,
-            ),
-        );
+        // app.add_systems(
+        //     Update,
+        //     (
+        //         spawn_duck,
+        //         remove_duck,
+        //         wander,
+        //         move_to_pathfinding_goal,
+        //         beg_for_bread,
+        //         handle_interactions,
+        //     ),
+        // );
     }
 }
 
@@ -93,11 +93,11 @@ fn remove_duck(
 fn beg_for_bread(
     world_map: Res<WorldMap>,
     items: Res<Items>,
-    players: Query<(&Inventory, &EquippedItem, &GlobalTransform), With<Player>>,
+    players: Query<(&Inventory, &GlobalTransform), With<Player>>,
     mut ducks: Query<(&mut Duck, &mut PathFinder, &GlobalTransform)>,
 ) {
     'outer: for (mut duck, mut path_finder, duck_transform) in ducks.iter_mut() {
-        for (inventory, equipped_item, player_transform) in players.iter() {
+        for (inventory, player_transform) in players.iter() {
             if duck_transform
                 .translation()
                 .distance_squared(player_transform.translation())
@@ -106,13 +106,11 @@ fn beg_for_bread(
                 continue;
             }
 
-            let equipped_item = &inventory[equipped_item.0];
-            if equipped_item.is_empty() {
+            let Some(held_item) = inventory.held_item_stack().item() else {
                 continue;
-            }
-            let item_id = equipped_item.item().unwrap().id;
+            };
 
-            if items.get_id("bread").unwrap() != item_id {
+            if items.get_id("bread").unwrap() != held_item.id {
                 continue;
             }
 
@@ -302,23 +300,23 @@ fn move_to_pathfinding_goal(
 
 fn handle_interactions(
     items: Res<Items>,
-    mut player_query: Query<(&mut Inventory, &EquippedItem), With<Player>>,
+    mut player_query: Query<&mut Inventory, With<Player>>,
     mut ducks: Query<&mut HandInteractions, (With<Duck>, Changed<HandInteractions>)>,
 ) {
     for mut interactions in ducks.iter_mut() {
         for player_entity in interactions.read() {
-            let (mut inventory, equipped_item) = player_query.get_mut(player_entity).unwrap();
-            let item_stack = &mut inventory[equipped_item.0];
+            let mut inventory = player_query.get_mut(player_entity).unwrap();
+            let item_stack = inventory.held_item_stack_mut();
 
-            if item_stack.is_empty() {
+            let Some(item) = item_stack.item() else {
+                continue;
+            };
+
+            if item.id != items.get_id("bread").unwrap() {
                 continue;
             }
 
-            if item_stack.item().unwrap().id != items.get_id("bread").unwrap() {
-                continue;
-            }
-
-            item_stack.subtract(1);
+            item_stack.take(1);
         }
     }
 }

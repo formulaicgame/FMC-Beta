@@ -1,6 +1,6 @@
 use fmc::{
     interfaces::{
-        HeldInterfaceItem, InterfaceEventRegistration, InterfaceInteractionEvents,
+        HeldInterfaceStack, InterfaceEventRegistration, InterfaceInteractionEvents,
         RegisterInterfaceProvider,
     },
     items::{ItemStack, Items},
@@ -12,7 +12,7 @@ use fmc::{
 
 use crate::{
     items::crafting::{CraftingGrid, Recipes},
-    players::{Equipment, EquippedItem, Inventory},
+    players::{Equipment, Inventory},
 };
 
 pub struct InventoryInterfacePlugin;
@@ -202,7 +202,7 @@ fn send_server_updates(
 struct InventoryNode;
 
 fn handle_inventory_events(
-    mut inventory_query: Query<(&mut Inventory, &mut HeldInterfaceItem), With<Player>>,
+    mut inventory_query: Query<(&mut Inventory, &mut HeldInterfaceStack), With<Player>>,
     mut interface_events: Query<
         (&mut InterfaceInteractionEvents, &Parent),
         (Changed<InterfaceInteractionEvents>, With<InventoryNode>),
@@ -220,7 +220,7 @@ fn handle_inventory_events(
                     let Some(item_stack) = inventory.get_mut(index as usize + 9) else {
                         continue;
                     };
-                    item_stack.transfer(&mut held_item, quantity);
+                    item_stack.transfer_to(&mut held_item, quantity);
                 }
                 messages::InterfaceInteraction::PlaceItem {
                     index, quantity, ..
@@ -228,7 +228,7 @@ fn handle_inventory_events(
                     let Some(item_stack) = inventory.get_mut(index as usize + 9) else {
                         continue;
                     };
-                    held_item.transfer(item_stack, quantity);
+                    held_item.transfer_to(item_stack, quantity);
                 }
                 _ => continue,
             }
@@ -240,7 +240,7 @@ fn handle_inventory_events(
 struct HotbarNode;
 
 fn handle_hotbar_events(
-    mut inventory_query: Query<(&mut Inventory, &mut HeldInterfaceItem), With<Player>>,
+    mut inventory_query: Query<(&mut Inventory, &mut HeldInterfaceStack), With<Player>>,
     mut interface_events: Query<
         (&mut InterfaceInteractionEvents, &Parent),
         (Changed<InterfaceInteractionEvents>, With<HotbarNode>),
@@ -258,7 +258,7 @@ fn handle_hotbar_events(
                     let Some(item_stack) = inventory.get_mut(index as usize) else {
                         continue;
                     };
-                    item_stack.transfer(&mut held_item, quantity);
+                    item_stack.transfer_to(&mut held_item, quantity);
                 }
                 messages::InterfaceInteraction::PlaceItem {
                     index, quantity, ..
@@ -266,7 +266,7 @@ fn handle_hotbar_events(
                     let Some(item_stack) = inventory.get_mut(index as usize) else {
                         continue;
                     };
-                    held_item.transfer(item_stack, quantity);
+                    held_item.transfer_to(item_stack, quantity);
                 }
                 _ => continue,
             }
@@ -289,13 +289,13 @@ struct BootsNode;
 trait EquipmentNode {
     const NAME: &'static str;
 
-    fn equipment_item_stack(equipment: &mut Equipment) -> &mut ItemStack;
+    fn get_item_stack(equipment: &mut Equipment) -> &mut ItemStack;
 }
 
 impl EquipmentNode for HelmetNode {
     const NAME: &'static str = "helmet";
 
-    fn equipment_item_stack(equipment: &mut Equipment) -> &mut ItemStack {
+    fn get_item_stack(equipment: &mut Equipment) -> &mut ItemStack {
         &mut equipment.helmet
     }
 }
@@ -303,7 +303,7 @@ impl EquipmentNode for HelmetNode {
 impl EquipmentNode for ChestplateNode {
     const NAME: &'static str = "chestplate";
 
-    fn equipment_item_stack(equipment: &mut Equipment) -> &mut ItemStack {
+    fn get_item_stack(equipment: &mut Equipment) -> &mut ItemStack {
         &mut equipment.chestplate
     }
 }
@@ -311,7 +311,7 @@ impl EquipmentNode for ChestplateNode {
 impl EquipmentNode for LeggingsNode {
     const NAME: &'static str = "leggings";
 
-    fn equipment_item_stack(equipment: &mut Equipment) -> &mut ItemStack {
+    fn get_item_stack(equipment: &mut Equipment) -> &mut ItemStack {
         &mut equipment.leggings
     }
 }
@@ -319,40 +319,40 @@ impl EquipmentNode for LeggingsNode {
 impl EquipmentNode for BootsNode {
     const NAME: &'static str = "boots";
 
-    fn equipment_item_stack(equipment: &mut Equipment) -> &mut ItemStack {
+    fn get_item_stack(equipment: &mut Equipment) -> &mut ItemStack {
         &mut equipment.boots
     }
 }
 
 fn handle_equipment_events<T: EquipmentNode + Component>(
     items: Res<Items>,
-    mut inventory_query: Query<(&mut Equipment, &mut HeldInterfaceItem), With<Player>>,
+    mut inventory_query: Query<(&mut Equipment, &mut HeldInterfaceStack), With<Player>>,
     mut interface_events: Query<
         (&mut InterfaceInteractionEvents, &Parent),
         (Changed<InterfaceInteractionEvents>, With<T>),
     >,
 ) {
     for (mut events, parent) in interface_events.iter_mut() {
-        let (mut equipment, mut held_item) = inventory_query.get_mut(parent.get()).unwrap();
+        let (mut equipment, mut held) = inventory_query.get_mut(parent.get()).unwrap();
 
-        let equipment_item = T::equipment_item_stack(&mut *equipment);
+        let equipment_item = T::get_item_stack(&mut *equipment);
 
         for event in events.read() {
             match *event {
                 messages::InterfaceInteraction::TakeItem { quantity, .. } => {
-                    if !held_item.item_stack.is_empty() {
+                    if !held.item_stack.is_empty() {
                         continue;
                     }
-                    equipment_item.transfer(&mut held_item, quantity);
+                    equipment_item.transfer_to(&mut held, quantity);
                 }
                 messages::InterfaceInteraction::PlaceItem { quantity, .. } => {
-                    let Some(item) = held_item.item() else {
+                    let Some(item) = held.item() else {
                         continue;
                     };
                     if !items.get_config(&item.id).categories.contains(T::NAME) {
                         continue;
                     };
-                    held_item.transfer(equipment_item, quantity);
+                    held.transfer_to(equipment_item, quantity);
                 }
                 _ => continue,
             }
@@ -366,7 +366,7 @@ struct CraftingInput;
 fn handle_crafting_input_events(
     net: Res<Server>,
     recipes: Res<Recipes>,
-    mut inventory_query: Query<(Entity, &mut HeldInterfaceItem, &mut CraftingGrid), With<Player>>,
+    mut inventory_query: Query<(Entity, &mut HeldInterfaceStack, &mut CraftingGrid), With<Player>>,
     mut interface_events: Query<
         (&mut InterfaceInteractionEvents, &Parent),
         (Changed<InterfaceInteractionEvents>, With<CraftingInput>),
@@ -383,7 +383,7 @@ fn handle_crafting_input_events(
                     let Some(item_stack) = crafting_input.get_mut(index as usize) else {
                         continue;
                     };
-                    item_stack.transfer(&mut held_item, quantity);
+                    item_stack.transfer_to(&mut held_item, quantity);
                 }
                 messages::InterfaceInteraction::PlaceItem {
                     index, quantity, ..
@@ -391,7 +391,7 @@ fn handle_crafting_input_events(
                     let Some(item_stack) = crafting_input.get_mut(index as usize) else {
                         continue;
                     };
-                    held_item.transfer(item_stack, quantity);
+                    held_item.transfer_to(item_stack, quantity);
                 }
                 _ => continue,
             }
@@ -423,7 +423,7 @@ fn handle_crafting_output_events(
     net: Res<Server>,
     recipes: Res<Recipes>,
     items: Res<Items>,
-    mut inventory_query: Query<(Entity, &mut CraftingGrid, &mut HeldInterfaceItem), With<Player>>,
+    mut inventory_query: Query<(Entity, &mut CraftingGrid, &mut HeldInterfaceStack), With<Player>>,
     mut interface_events: Query<
         (&mut InterfaceInteractionEvents, &Parent),
         (Changed<InterfaceInteractionEvents>, With<CraftingOutput>),
@@ -498,7 +498,7 @@ fn handle_crafting_output_events(
 fn equip_item(
     net: Res<Server>,
     mut equip_events: EventReader<NetworkMessage<messages::InterfaceEquipItem>>,
-    mut equipped_item_query: Query<&mut EquippedItem>,
+    mut inventory: Query<&mut Inventory>,
 ) {
     for equip_event in equip_events.read() {
         if equip_event.interface_path != "hotbar" {
@@ -510,9 +510,7 @@ fn equip_item(
             continue;
         }
 
-        let mut equipped_item = equipped_item_query
-            .get_mut(equip_event.player_entity)
-            .unwrap();
-        equipped_item.0 = equip_event.index as usize;
+        let mut inventory = inventory.get_mut(equip_event.player_entity).unwrap();
+        inventory.equipped_item = equip_event.index as usize;
     }
 }

@@ -280,10 +280,10 @@ impl Water {
                 let rotation = BlockRotation::from(i);
                 self.water_to_block.insert(
                     water_block.rotate(rotation),
-                    (block_id, Some(BlockState::new(rotation))),
+                    (block_id, Some(BlockState::new().with_rotation(rotation))),
                 );
                 self.block_to_water.insert(
-                    (block_id, Some(BlockState::new(rotation))),
+                    (block_id, Some(BlockState::new().with_rotation(rotation))),
                     water_block.rotate(rotation),
                 );
             }
