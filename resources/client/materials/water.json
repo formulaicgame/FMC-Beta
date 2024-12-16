@@ -1,13 +1,10 @@
 {
     "type": "block",
     "base_color": {
-        "LinearRgba": {
-            "red": 0,
-            "green": 0,
-            "blue": 1,
-            "alpha": 1
-        }
-        
+        "red": 0,
+        "green": 0,
+        "blue": 1,
+        "alpha": 1
     },
     "double_sided": true,
     "transparency": "blend",

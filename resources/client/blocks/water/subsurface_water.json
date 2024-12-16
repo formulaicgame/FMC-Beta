@@ -9,17 +9,18 @@
             0.8
         ]
     },
-    "light_attenuation": 1,
+    "light_attenuation": 2,
     "fog": {
         "color": {
             "LinearRgba": {
                 "red": 0,
                 "green": 0,
-                "blue": 1,
+                "blue": 0.7,
                 "alpha": 1
             }
         },
-        "distance": 50
+        "start": 0,
+        "stop": 100
     },
     "replaceable": true,
     "placement": {
