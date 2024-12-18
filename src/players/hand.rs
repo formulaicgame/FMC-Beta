@@ -3,11 +3,11 @@ use std::collections::HashMap;
 use fmc::{
     bevy::math::DVec3,
     blocks::{BlockConfig, BlockFace, BlockId, BlockPosition, Blocks},
-    items::Items,
+    items::{ItemStack, Items},
     models::{Model, ModelAnimations, ModelBundle, ModelMap, ModelVisibility, Models},
     networking::{NetworkMessage, Server},
     physics::shapes::Aabb,
-    players::{Camera, Player, Target},
+    players::{Camera, Player, Target, Targets},
     prelude::*,
     protocol::messages,
     utils,
@@ -52,35 +52,42 @@ impl HandInteractions {
 
 fn handle_left_clicks(
     mut clicks: EventReader<NetworkMessage<messages::LeftClick>>,
-    world_map: Res<WorldMap>,
-    player_query: Query<(&Target, &Camera, &GlobalTransform), With<Player>>,
+    player_query: Query<(&Targets, &Camera, &GlobalTransform), With<Player>>,
     mut block_breaking_events: ResMut<BlockBreakingEvents>,
 ) {
     for click in clicks.read() {
-        let (target, camera, transform) = player_query.get(click.player_entity).unwrap();
+        let (targets, camera, transform) = player_query.get(click.player_entity).unwrap();
 
         let camera_position = transform.translation() + camera.translation;
 
-        match target {
-            Target::Block {
-                block_position,
-                block_face,
-                distance,
-                ..
-            } => {
-                let hit_position = camera_position + camera.forward() * *distance;
-                let block_id = world_map.get_block(*block_position).unwrap();
-                block_breaking_events.insert(
-                    *block_position,
-                    (click.player_entity, block_id, *block_face, hit_position),
-                );
+        for target in targets.iter() {
+            match target {
+                Target::Block {
+                    block_position,
+                    block_id,
+                    block_face,
+                    distance,
+                    ..
+                } => {
+                    let block_config = Blocks::get().get_config(block_id);
+
+                    if block_config.hardness.is_some() {
+                        let hit_position = camera_position + camera.forward() * *distance;
+                        block_breaking_events.insert(
+                            *block_position,
+                            (click.player_entity, *block_id, *block_face, hit_position),
+                        );
+
+                        break;
+                    }
+                }
+                _ => continue,
             }
-            _ => continue,
         }
     }
 }
 
-#[derive(Resource, Deref, DerefMut, Default)]
+#[derive(Resource, Deref, DerefMut, Default, Debug)]
 struct BlockBreakingEvents(HashMap<IVec3, (Entity, BlockId, BlockFace, DVec3)>);
 
 // Keeps the state of how far along a block is to breaking
@@ -445,120 +452,163 @@ fn handle_right_clicks(
     usable_items: Res<UsableItems>,
     model_map: Res<ModelMap>,
     model_query: Query<(&Aabb, &GlobalTransform), (With<Model>, Without<BlockPosition>)>,
-    mut player_query: Query<(&mut Inventory, &Target, &Camera), With<Player>>,
+    mut player_query: Query<(&mut Inventory, &Targets, &Camera), With<Player>>,
     mut item_use_query: Query<&mut ItemUses>,
     mut hand_interaction_query: Query<&mut HandInteractions>,
     mut block_update_writer: EventWriter<BlockUpdate>,
     mut clicks: EventReader<NetworkMessage<messages::RightClick>>,
 ) {
+    // TODO: ActionOrder currently does nothing, but there needs to be some system for deviating
+    // from the set order. Like if you hold shift, placing blocks should take precedence over
+    // interacting. And there's a bunch of stuff like this where you want to do something else
+    // depending on some condition.
+    enum ActionOrder {
+        Interact,
+        PlaceBlock,
+        UseItem,
+    }
+
     for right_click in clicks.read() {
-        let (mut inventory, target, camera) =
+        let (mut inventory, targets, camera) =
             player_query.get_mut(right_click.player_entity).unwrap();
 
-        let mut use_item = || {
-            let equipped_item = &mut inventory.held_item_stack_mut();
+        let mut action = ActionOrder::Interact;
 
-            let Some(item) = equipped_item.item() else {
-                return;
-            };
+        'outer: loop {
+            match action {
+                ActionOrder::Interact => {
+                    for target in targets.iter() {
+                        let Some(entity) = target.entity() else {
+                            continue;
+                        };
 
-            if let Some(item_use_entity) = usable_items.get(&item.id) {
-                let mut uses = item_use_query.get_mut(*item_use_entity).unwrap();
-                uses.push(right_click.player_entity);
-            }
-        };
-
-        // TODO: Needs override, shift held = always place block
-        match target {
-            Target::Entity { entity, .. } => {
-                if let Ok(mut interactions) = hand_interaction_query.get_mut(*entity) {
-                    interactions.push(right_click.player_entity);
-                } else {
-                    use_item()
-                }
-            }
-            Target::Block {
-                block_position,
-                distance: _distance,
-                block_face,
-                entity,
-            } => {
-                if let Some(entity) = *entity {
-                    if let Ok(mut interactions) = hand_interaction_query.get_mut(entity) {
-                        // If the block can be interacted with, that takes precedence
-                        interactions.push(right_click.player_entity);
-                    } else {
-                        // Otherwise use the item
-                        use_item();
+                        if let Ok(mut interactions) = hand_interaction_query.get_mut(entity) {
+                            interactions.push(right_click.player_entity);
+                            break 'outer;
+                        }
                     }
-                } else {
-                    let equipped_item_stack = inventory.held_item_stack_mut();
 
-                    let Some(item) = equipped_item_stack.item() else {
-                        // No item equipped, can't place block
-                        continue;
-                    };
+                    action = ActionOrder::PlaceBlock;
+                }
+                ActionOrder::PlaceBlock => {
+                    let blocks = Blocks::get();
 
-                    let item_config = items.get_config(&item.id);
-
-                    let Some(block_id) = item_config.block else {
-                        // The item isn't bound to a placeable block
+                    let Some(Target::Block {
+                        block_position,
+                        block_id,
+                        block_face,
+                        ..
+                    }) = targets
+                        .get_first_block(|block_id| blocks.get_config(block_id).hardness.is_some())
+                    else {
+                        action = ActionOrder::UseItem;
                         continue;
                     };
 
                     let blocks = Blocks::get();
+                    let equipped_item_stack = inventory.held_item_stack_mut();
 
-                    if !blocks.get_config(&block_id).placeable(*block_face) {
-                        continue;
-                    }
+                    if let Some((block_id, replaced_block_position)) = block_placement(
+                        &equipped_item_stack,
+                        *block_id,
+                        *block_face,
+                        *block_position,
+                        &items,
+                        &blocks,
+                        &world_map,
+                    ) {
+                        let block_config = blocks.get_config(&block_id);
+                        let block_state =
+                            block_config.placement_rotation(camera.transform(), *block_face);
 
-                    let replaced_block_position = if blocks.get_config(&block_id).replaceable {
-                        // Some blocks, like grass, can be replaced instead of placing the new
-                        // block adjacently to it.
-                        *block_position
-                    } else if let Some(block_id) =
-                        world_map.get_block(block_face.shift_position(*block_position))
-                    {
-                        if !blocks.get_config(&block_id).replaceable {
-                            continue;
-                        }
-                        block_face.shift_position(*block_position)
-                    } else {
-                        continue;
-                    };
+                        let replaced_aabb = Aabb {
+                            center: replaced_block_position.as_dvec3(),
+                            half_extents: DVec3::splat(0.5),
+                        };
 
-                    let block_config = blocks.get_config(&block_id);
-                    let block_state =
-                        block_config.placement_rotation(camera.transform(), *block_face);
-
-                    let replaced_aabb = Aabb {
-                        center: replaced_block_position.as_dvec3(),
-                        half_extents: DVec3::splat(0.5),
-                    };
-
-                    // Check that there aren't any entities in the way of the new block
-                    let chunk_position =
-                        utils::world_position_to_chunk_position(replaced_block_position);
-                    if let Some(entities) = model_map.get_entities(&chunk_position) {
-                        for (aabb, global_transform) in model_query.iter_many(entities) {
-                            let mut aabb = aabb.clone();
-                            aabb.center += global_transform.translation();
-                            if aabb.intersects(&replaced_aabb).is_some() {
-                                continue;
+                        // Check that there aren't any entities in the way of the new block
+                        let chunk_position =
+                            utils::world_position_to_chunk_position(replaced_block_position);
+                        if let Some(entities) = model_map.get_entities(&chunk_position) {
+                            for (aabb, global_transform) in model_query.iter_many(entities) {
+                                let mut aabb = aabb.clone();
+                                aabb.center += global_transform.translation();
+                                if aabb.intersects(&replaced_aabb).is_some() {
+                                    continue;
+                                }
                             }
                         }
+
+                        equipped_item_stack.take(1);
+
+                        block_update_writer.send(BlockUpdate::Change {
+                            position: replaced_block_position,
+                            block_id,
+                            block_state,
+                        });
+
+                        break;
+                    } else {
+                        action = ActionOrder::UseItem;
+                    }
+                }
+                ActionOrder::UseItem => {
+                    // If nothing else was done, we try to use the item
+                    let equipped_item_stack = inventory.held_item_stack_mut();
+
+                    let Some(item) = equipped_item_stack.item() else {
+                        break;
+                    };
+
+                    if let Some(item_use_entity) = usable_items.get(&item.id) {
+                        let mut uses = item_use_query.get_mut(*item_use_entity).unwrap();
+                        uses.push(right_click.player_entity);
                     }
 
-                    equipped_item_stack.take(1);
-
-                    block_update_writer.send(BlockUpdate::Change {
-                        position: replaced_block_position,
-                        block_id,
-                        block_state,
-                    });
+                    break;
                 }
             }
-            _ => continue,
         }
     }
+}
+
+fn block_placement(
+    equipped_item_stack: &ItemStack,
+    block_id: BlockId,
+    block_face: BlockFace,
+    block_position: IVec3,
+    items: &Items,
+    blocks: &Blocks,
+    world_map: &WorldMap,
+) -> Option<(BlockId, IVec3)> {
+    let Some(item) = equipped_item_stack.item() else {
+        // No item equipped, can't place block
+        return None;
+    };
+
+    let item_config = items.get_config(&item.id);
+
+    let Some(new_block_id) = item_config.block else {
+        // The item isn't bound to a placeable block
+        return None;
+    };
+
+    if !blocks.get_config(&new_block_id).placeable(block_face) {
+        return None;
+    }
+
+    let replaced_block_position = if blocks.get_config(&block_id).replaceable {
+        // Some blocks, like grass, can be replaced instead of placing the new
+        // block adjacently to it.
+        block_position
+    } else if let Some(block_id) = world_map.get_block(block_face.shift_position(block_position)) {
+        if !blocks.get_config(&block_id).replaceable {
+            return None;
+        }
+        block_face.shift_position(block_position)
+    } else {
+        return None;
+    };
+
+    return Some((new_block_id, replaced_block_position));
 }

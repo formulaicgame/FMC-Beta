@@ -1,8 +1,9 @@
 use fmc::{
+    bevy::math::DVec3,
     blocks::{BlockId, Blocks},
     items::Items,
     models::Models,
-    players::{Player, Target},
+    players::{Player, Target, Targets},
     prelude::*,
     world::{BlockUpdate, WorldMap},
 };
@@ -47,8 +48,7 @@ fn use_hoe(
     mut commands: Commands,
     items: Res<Items>,
     models: Res<Models>,
-    world_map: Res<WorldMap>,
-    player_query: Query<&Target, With<Player>>,
+    player_query: Query<&Targets, With<Player>>,
     mut hoe_uses: Query<(&mut ItemUses, &HoeConfig), Changed<ItemUses>>,
     mut block_update_writer: EventWriter<BlockUpdate>,
 ) {
@@ -57,19 +57,19 @@ fn use_hoe(
     };
 
     for player_entity in uses.read() {
-        let Target::Block { block_position, .. } = player_query.get(player_entity).unwrap() else {
+        let targets = player_query.get(player_entity).unwrap();
+
+        let Some(Target::Block {
+            block_position,
+            block_id,
+            ..
+        }) = targets
+            .get_first_block(|block_id| *block_id == config.dirt || *block_id == config.grass)
+        else {
             continue;
         };
 
-        let Some(block_id) = world_map.get_block(*block_position) else {
-            continue;
-        };
-
-        if block_id != config.dirt && block_id != config.grass {
-            return;
-        }
-
-        if block_id == config.grass {
+        if *block_id == config.grass {
             let item_id = items.get_id("wheat_seeds").unwrap();
             let item_config = items.get_config(&item_id);
 
@@ -78,7 +78,7 @@ fn use_hoe(
                 item_config,
                 models.get_by_id(item_config.model_id),
                 1,
-                (*block_position + IVec3::Y).as_dvec3(),
+                block_position.as_dvec3() + DVec3::new(0.5, 1.1, 0.5),
             ));
         }
 

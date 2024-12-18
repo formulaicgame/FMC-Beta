@@ -1,7 +1,7 @@
 use fmc::{
     blocks::{BlockId, Blocks},
     items::Items,
-    players::{Camera, Player, Target},
+    players::{Camera, Player, Target, Targets},
     prelude::*,
     world::{BlockUpdate, WorldMap},
 };
@@ -44,7 +44,7 @@ struct SeedConfig {
 
 pub fn use_seeds(
     world_map: Res<WorldMap>,
-    player_query: Query<&Target, With<Player>>,
+    player_query: Query<&Targets, With<Player>>,
     mut hoe_uses: Query<(&mut ItemUses, &SeedConfig), Changed<ItemUses>>,
     mut block_update_writer: EventWriter<BlockUpdate>,
 ) {
@@ -53,17 +53,13 @@ pub fn use_seeds(
     };
 
     for player_entity in uses.read() {
-        let Target::Block { block_position, .. } = player_query.get(player_entity).unwrap() else {
+        let targets = player_query.get(player_entity).unwrap();
+
+        let Some(Target::Block { block_position, .. }) =
+            targets.get_first_block(|block_id| *block_id == config.soil)
+        else {
             continue;
         };
-
-        let Some(block_id) = world_map.get_block(*block_position) else {
-            continue;
-        };
-
-        if block_id != config.soil {
-            continue;
-        }
 
         if let Some(above_block) = world_map.get_block(*block_position + IVec3::Y) {
             if above_block != config.air {
