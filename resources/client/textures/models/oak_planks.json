@@ -1,0 +1,10 @@
+{
+    "block": {
+        "top": "oak_planks.png",
+        "bottom": "oak_planks.png",
+        "left": "oak_planks.png",
+        "right": "oak_planks.png",
+        "front": "oak_planks.png",
+        "back": "oak_planks.png"
+    }
+}

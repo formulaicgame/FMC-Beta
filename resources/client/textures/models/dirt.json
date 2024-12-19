@@ -1,0 +1,10 @@
+{
+    "block": {
+        "top": "dirt.png",
+        "bottom": "dirt.png",
+        "left": "dirt.png",
+        "right": "dirt.png",
+        "front": "dirt.png",
+        "back": "dirt.png"
+    }
+}
