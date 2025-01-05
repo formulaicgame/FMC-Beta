@@ -10,7 +10,7 @@ use fmc::{
     players::{Camera, Player, Target, Targets},
     prelude::*,
     protocol::messages,
-    utils,
+    utils::{self, Rng},
     world::{BlockUpdate, ChunkSubscriptions, WorldMap},
 };
 
@@ -114,6 +114,7 @@ fn break_blocks(
     mut block_update_writer: EventWriter<BlockUpdate>,
     mut block_breaking_events: ResMut<BlockBreakingEvents>,
     mut being_broken: Local<HashMap<IVec3, BreakingBlock>>,
+    mut rng: Local<Rng>,
 ) {
     let now = std::time::Instant::now();
 
@@ -152,6 +153,18 @@ fn break_blocks(
                         hit_particles(block_config, block_face, hit_position)
                     {
                         net.send_many(subscribers, particle_effect);
+                    }
+
+                    if let Some(hit_sound) = block_config.sound.hit(&mut rng) {
+                        net.send_many(
+                            subscribers,
+                            messages::Sound {
+                                position: Some(hit_position),
+                                volume: 0.2,
+                                speed: 0.5,
+                                sound: hit_sound.to_owned(),
+                            },
+                        )
                     }
                 }
             }
@@ -218,10 +231,21 @@ fn break_blocks(
         if broken || hardness == 0.0 {
             let chunk_position = utils::world_position_to_chunk_position(block_position);
             if let Some(subscribers) = chunk_subscriptions.get_subscribers(&chunk_position) {
-                if let Some(particle_effect) =
-                    break_particles(block_config, block_position.as_dvec3() + DVec3::splat(0.5))
-                {
+                let position = block_position.as_dvec3() + DVec3::splat(0.5);
+                if let Some(particle_effect) = break_particles(block_config, position) {
                     net.send_many(subscribers, particle_effect);
+                }
+
+                if let Some(destroy_sound) = block_config.sound.destroy(&mut rng) {
+                    net.send_many(
+                        subscribers,
+                        messages::Sound {
+                            position: Some(position),
+                            volume: 1.0,
+                            speed: 1.0,
+                            sound: destroy_sound.to_owned(),
+                        },
+                    )
                 }
             }
 
@@ -231,7 +255,6 @@ fn break_blocks(
                 block_state: None,
             });
 
-            let block_config = blocks.get_config(&block_id);
             let (dropped_item_id, count) = match block_config.drop(tool_config) {
                 Some(drop) => drop,
                 None => continue,
@@ -259,12 +282,12 @@ fn break_blocks(
                 .insert(BreakingBlockMarker)
                 .id();
 
-            let mut particle_timer = Timer::new(
-                std::time::Duration::from_secs_f32(0.1),
+            let particle_timer = Timer::new(
+                std::time::Duration::from_secs_f32(0.2),
                 TimerMode::Repeating,
             );
             // Tick the timer so the first particles show up immediately
-            particle_timer.tick(std::time::Duration::from_secs(1));
+            //particle_timer.tick(std::time::Duration::from_secs(1));
 
             being_broken.insert(
                 block_position,
@@ -324,7 +347,7 @@ fn hit_particles(
         texture: Some(particle_texture.to_owned()),
         color: block_config.particle_color(),
         lifetime: (0.3, 1.0),
-        count: 2,
+        count: 4,
     })
 }
 

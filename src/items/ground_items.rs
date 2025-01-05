@@ -124,7 +124,7 @@ fn pick_up_items(
                         break;
                     }
 
-                    // First try to fill item stacks that already has the item
+                    // First try to fill item stacks that already have the item
                     for item_stack in player_inventory.iter_mut() {
                         if item_stack.item() == dropped_item.item() {
                             dropped_item.transfer_to(item_stack, u32::MAX);

@@ -13,5 +13,25 @@
     "drop": {
         "requires_tool": false,
         "drop": "dirt"
+    },
+    "sound": {
+        "step": [
+            "gravel_1.ogg",
+            "gravel_2.ogg",
+            "gravel_3.ogg",
+            "gravel_4.ogg"
+        ],
+        "hit": [
+            "gravel_1.ogg",
+            "gravel_2.ogg",
+            "gravel_3.ogg",
+            "gravel_4.ogg"
+        ],
+        "destroy": [
+            "gravel_1.ogg",
+            "gravel_2.ogg",
+            "gravel_3.ogg",
+            "gravel_4.ogg"
+        ]
     }
 }
