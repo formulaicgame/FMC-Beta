@@ -2,14 +2,9 @@ use fmc::bevy::{
     //diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
     prelude::*,
 };
+use fmc_beta::*;
 
 mod assets;
-mod items;
-mod mobs;
-mod players;
-mod settings;
-mod skybox;
-mod world;
 
 fn main() {
     App::new()

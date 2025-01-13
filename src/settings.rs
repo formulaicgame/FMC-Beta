@@ -1,6 +1,9 @@
 use fmc::prelude::*;
 
-use std::io::{BufRead, BufReader};
+use std::{
+    hash::{DefaultHasher, Hasher},
+    io::{BufRead, BufReader},
+};
 
 #[derive(Resource)]
 pub struct Settings {
@@ -49,7 +52,7 @@ impl Settings {
 
             let (name, value) = line.split_once("=").unwrap_or_else(|| {
                 panic!(
-                    "Error reading server settings, setting on line {} was misconfigured.
+                    "Error reading server_settings.txt at line {}.
                        All settings must be of the format 'name = setting', it cannot be '{}'",
                     line_num, line
                 );
@@ -62,13 +65,9 @@ impl Settings {
                     server_settings.database_path = "./".to_owned() + value + ".sqlite";
                 }
                 "seed" => {
-                    let value = value.parse::<u64>().unwrap_or_else(|_| {
-                        panic!(
-                            "Server property 'seed' must be a positive number below 18 * 10¹⁸, cannot be: {}",
-                            value
-                        )
-                    });
-                    server_settings.seed = value;
+                    let mut hasher = DefaultHasher::new();
+                    hasher.write(value.as_bytes());
+                    server_settings.seed = hasher.finish();
                 }
                 "pvp" => {
                     let value = value.parse::<bool>().unwrap_or_else(|_| {
@@ -80,10 +79,7 @@ impl Settings {
                     server_settings.pvp = value;
                 }
                 _ => {
-                    panic!(
-                        "Undefined setting in settings file, there is no setting with the name: {}",
-                        name
-                    );
+                    panic!("Invalid setting '{name}' in settings file at line {line}",);
                 }
             }
         }
