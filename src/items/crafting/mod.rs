@@ -18,9 +18,9 @@ impl Plugin for CraftingPlugin {
 fn load_recipes(mut commands: Commands, items: Res<Items>) {
     let mut recipes = HashMap::new();
 
-    let directory = std::fs::read_dir("resources/client/items/recipes").expect(
-        "Couldn't read files from recipe directory make sure it is present at: \
-                resources/client/items/recipes",
+    let directory = std::fs::read_dir("assets/client/items/recipes").expect(
+        "Couldn't read recipe directory make sure it is present at: \
+                assets/client/items/recipes",
     );
 
     for dir_entry in directory {
@@ -74,14 +74,14 @@ fn load_recipes(mut commands: Commands, items: Res<Items>) {
                                 })
                                 .unzip(),
                             _ => panic!(
-                            "Error parsing item recipe pattern at: {}\n'pattern_type' is 'shaped',\
-                                    but the pattern is not in the form of a grid. Should be like:\n\
-                                    [\n    \
-                                           [[\"\", 0], [\"item\", 1]],\n    \
-                                           [[\"item\", 1], [\"\", 0]]\n\
-                                    ]\n",
-                            file_path.display()
-                        ),
+                                r#"Error parsing item recipe pattern at: {}
+'pattern_type' is 'shaped', but the pattern is not in the form of a grid. Should be like:
+[
+       [["", 0], ["item", 1]],
+       [["item", 1], ["", 0]]
+]"#,
+                                file_path.display()
+                            ),
                         };
 
                     let output_item = match items.get_id(&recipe_json.output_item) {
