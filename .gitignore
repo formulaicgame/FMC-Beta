@@ -1,4 +1,2 @@
-*.sqlite
-server_settings.txt
-/assets/assets.tar.zstd
-**/target
+target
+server

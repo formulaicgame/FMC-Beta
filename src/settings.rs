@@ -5,6 +5,13 @@ use std::{
     io::{BufRead, BufReader},
 };
 
+pub struct SettingsPlugin;
+impl Plugin for SettingsPlugin {
+    fn build(&self, app: &mut App) {
+        app.insert_resource(Settings::load());
+    }
+}
+
 #[derive(Resource)]
 pub struct Settings {
     /// Name of the world that should be loaded

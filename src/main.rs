@@ -1,21 +1,11 @@
-use fmc::bevy::{
-    //diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
-    prelude::*,
-};
-use fmc_beta::*;
-
-mod assets;
+use fmc_beta::prelude::*;
 
 fn main() {
-    App::new()
-        .insert_resource(settings::Settings::load())
-        .add_plugins(assets::ExtractBundledAssetsPlugin)
-        .add_plugins(fmc::DefaultPlugins)
-        //.add_plugins((FrameTimeDiagnosticsPlugin, FrameCountPlugin))
-        .add_plugins(items::ItemPlugin)
-        .add_plugins(players::PlayerPlugin)
-        .add_plugins(world::WorldPlugin)
-        .add_plugins(skybox::SkyPlugin)
-        .add_plugins(mobs::MobsPlugin)
-        .run();
+    // While developing we want all artifacts to go to a separate directory.
+    if std::env::var_os("CARGO").is_some() {
+        std::fs::create_dir("server").ok();
+        std::env::set_current_dir("server").unwrap();
+    }
+
+    App::new().add_plugins(fmc_beta::DefaultPlugins).run();
 }

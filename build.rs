@@ -6,35 +6,20 @@ use cargo_metadata::DependencyKind;
 fn main() {
     println!("cargo:rerun-if-changed=assets");
 
-    let mut archive = tar::Builder::new(Vec::new());
-    // Start by adding the base assets from this crate so they can be overridden by mods.
-    // A guard is included later that prevents them being added again if this crate is used as a
-    // dependency.
-    archive
-        .append_dir_all("assets/client", "assets/client")
-        .unwrap();
-    archive
-        .append_dir_all("assets/server", "assets/server")
-        .unwrap();
-
     let mut asset_paths = HashMap::new();
-
-    for path in get_dependency_paths() {
-        // TODO: If a non-mod dependency has a assets/{client, server} folder(somewhat likely) it
-        // will be included even though it shouldn't be. Need some way to verify that a dependency
-        // is a mod, maybe check that it has 'fmc' or this crate(idk if it should be possible to
-        // create server agnostic mods) in its resolved dependency graph.
-        for asset_path in walk_dir(path.join("assets/client")) {
-            let relative_asset_path = asset_path.strip_prefix(&path).unwrap().to_path_buf();
-            asset_paths.insert(relative_asset_path, asset_path);
+    for asset_path in get_asset_paths() {
+        for asset in walk_dir(asset_path.join("assets/client")) {
+            let relative_asset_path = asset.strip_prefix(&asset_path).unwrap().to_path_buf();
+            asset_paths.insert(relative_asset_path, asset);
         }
 
-        for asset_path in walk_dir(&path.join("assets/server")) {
-            let relative_asset_path = asset_path.strip_prefix(&path).unwrap().to_path_buf();
-            asset_paths.insert(relative_asset_path, asset_path);
+        for asset in walk_dir(asset_path.join("assets/server")) {
+            let relative_asset_path = asset.strip_prefix(&asset_path).unwrap().to_path_buf();
+            asset_paths.insert(relative_asset_path, asset);
         }
     }
 
+    let mut archive = tar::Builder::new(Vec::new());
     for (relative_path, absolute_path) in asset_paths {
         archive
             .append_path_with_name(absolute_path, relative_path)
@@ -70,12 +55,12 @@ fn walk_dir<P: AsRef<std::path::Path>>(dir: P) -> Vec<std::path::PathBuf> {
     files
 }
 
-fn get_dependency_paths() -> Vec<PathBuf> {
-    let manifest_path = PathBuf::from(std::env::var_os("OUT_DIR").unwrap())
-        // TODO: This is the best way I could find of locating the folder of the binary that is
-        // being built.
-        .join("../../../../..")
-        .join("Cargo.toml");
+fn get_asset_paths() -> Vec<PathBuf> {
+    let binary_dir = PathBuf::from(std::env::var_os("OUT_DIR").unwrap())
+        // TODO: Has to be a better way to locate the directory of the binary being built
+        .join("../../../../..");
+
+    let manifest_path = binary_dir.join("Cargo.toml");
 
     let meta = cargo_metadata::MetadataCommand::new()
         .cargo_path(std::env::var_os("CARGO").unwrap())
@@ -93,7 +78,7 @@ fn get_dependency_paths() -> Vec<PathBuf> {
     // A bit of mangling necessary here because the dependencies returned in metadata are in
     // alphabetical order. The dependency order in Cargo.toml is the asset priority order, so we
     // have to build it independently. The 'toml' crate has a 'preserve order' feature we use.
-    let mut mod_paths_unsorted = HashMap::new();
+    let mut asset_paths_unsorted = HashMap::new();
 
     let root_package = meta.root_package().unwrap();
     for dependency in root_package.dependencies.iter() {
@@ -103,19 +88,18 @@ fn get_dependency_paths() -> Vec<PathBuf> {
 
         let package = &meta.packages[index_lookup[&dependency.name]];
 
-        if package.manifest_path == manifest_path {
-            // The server library is being used as a dependency, skip it.
-            continue;
-        }
-
-        mod_paths_unsorted.insert(
+        asset_paths_unsorted.insert(
             package.name.clone(),
             PathBuf::from(package.manifest_path.parent().unwrap()),
         );
     }
 
-    let mut mod_paths = Vec::new();
+    let mut asset_paths = Vec::new();
 
+    // TODO: Currently using the order dependencies appear in Cargo.toml to decide asset
+    // presedence. This should not be left to the user. Sort mod assets into their own separate
+    // directories instead of overwriting. Make some resolution mechanism at runtime the
+    // mods can hook into to prioritize themselves.
     let manifest =
         toml::from_str::<toml::Table>(&std::fs::read_to_string(&manifest_path).unwrap()).unwrap();
     for (name, data) in manifest
@@ -127,8 +111,13 @@ fn get_dependency_paths() -> Vec<PathBuf> {
         // Dependencies can be renamed by specifying the crate name in the 'package' field
         let name = data.get("package").and_then(|p| p.as_str()).unwrap_or(name);
 
-        mod_paths.push(mod_paths_unsorted.remove(name).unwrap());
+        asset_paths.push(asset_paths_unsorted.remove(name).unwrap());
     }
 
-    return mod_paths;
+    // Include assets from the binary's directory. For when you build the the library
+    // crate as a binary or are creating a mod, where they wouldn't be counted among the
+    // dependencies.
+    asset_paths.push(binary_dir);
+
+    return asset_paths;
 }
