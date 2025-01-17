@@ -1,4 +1,6 @@
-# FMC Beta
+# FMC Vanilla
+
+Bare-bones implementation of an fmc server
 
 ## Licensing
 The repository is licensed [GPLv3](./LICENSE) with the following exceptions:

@@ -1462,8 +1462,8 @@ dependencies = [
 
 [[package]]
 name = "fmc"
-version = "0.0.2"
-source = "git+https://github.com/formulaicgame/fmc#e38fed276150a157e8718f4d4930bb380530ede5"
+version = "0.0.3"
+source = "git+https://github.com/formulaicgame/fmc#56b9d00a55b9d17382b5ef502c35ff397b27e591"
 dependencies = [
  "bevy",
  "bincode",
@@ -1482,8 +1482,49 @@ dependencies = [
 ]
 
 [[package]]
-name = "fmc_beta"
+name = "fmc_noise"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3b1bd2adfdb1fe6758212b84de7a4ed7341cc2f8cd567aa06984dd2f6214b396"
+dependencies = [
+ "fmc_noise_macros",
+ "target-features",
+]
+
+[[package]]
+name = "fmc_noise_macros"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "172434e8727116a6d8d58d1e0c8bd5242847d4ad2448f179ef709af0fcb353ba"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.96",
+ "target-features",
+]
+
+[[package]]
+name = "fmc_protocol"
+version = "0.1.2"
+source = "git+https://github.com/formulaicgame/fmc_protocol#dec65a47d447ce267c93574b488a48284bbd9fa6"
+dependencies = [
+ "bevy",
+ "fmc_protocol_derive",
+ "serde",
+]
+
+[[package]]
+name = "fmc_protocol_derive"
 version = "0.1.0"
+source = "git+https://github.com/formulaicgame/fmc_protocol#dec65a47d447ce267c93574b488a48284bbd9fa6"
+dependencies = [
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "fmc_vanilla"
+version = "0.0.1"
 dependencies = [
  "bincode",
  "cargo_metadata",
@@ -1497,56 +1538,6 @@ dependencies = [
  "tar",
  "toml",
  "zstd",
-]
-
-[[package]]
-name = "fmc_noise"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1817f438173c6fafa2dc9caab139726e34d58e4924ea6b18ac4b88a2c1620d46"
-dependencies = [
- "fmc_noise_multiversion",
-]
-
-[[package]]
-name = "fmc_noise_multiversion"
-version = "0.7.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f67328f5f3468fd5ace4873fef60023b1c9638cf55dcb40b5e4366f2cb53929c"
-dependencies = [
- "fmc_noise_multiversion-macros",
- "target-features",
-]
-
-[[package]]
-name = "fmc_noise_multiversion-macros"
-version = "0.7.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ca685e54122ac3039366931af6c03d29258068395345c13d45ad808743a99f18"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
- "target-features",
-]
-
-[[package]]
-name = "fmc_protocol"
-version = "0.1.1"
-source = "git+https://github.com/formulaicgame/fmc_protocol#96f4537eedbb950849362239648c63a0b3ebbd3c"
-dependencies = [
- "bevy",
- "fmc_protocol_derive",
- "serde",
-]
-
-[[package]]
-name = "fmc_protocol_derive"
-version = "0.1.0"
-source = "git+https://github.com/formulaicgame/fmc_protocol#96f4537eedbb950849362239648c63a0b3ebbd3c"
-dependencies = [
- "quote",
- "syn 1.0.109",
 ]
 
 [[package]]

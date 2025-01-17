@@ -1,4 +1,4 @@
-use fmc_beta::prelude::*;
+use fmc_vanilla::prelude::*;
 
 fn main() {
     // While developing we want all artifacts to go to a separate directory.
@@ -7,5 +7,5 @@ fn main() {
         std::env::set_current_dir("server").unwrap();
     }
 
-    App::new().add_plugins(fmc_beta::DefaultPlugins).run();
+    App::new().add_plugins(fmc_vanilla::DefaultPlugins).run();
 }
