@@ -15,6 +15,12 @@
         "drop": "sand"
     },
     "sound": {
+        "place": [
+            "gravel_1.ogg",
+            "gravel_2.ogg",
+            "gravel_3.ogg",
+            "gravel_4.ogg"
+        ],
         "step": [
             "gravel_1.ogg",
             "gravel_2.ogg",

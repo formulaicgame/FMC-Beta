@@ -15,6 +15,14 @@
         "min": [0, 0, 0],
         "max": [1, 0.5, 1]
     },
+    "sound": {
+        "destroy": [
+            "grass_1.ogg",
+            "grass_2.ogg",
+            "grass_3.ogg",
+            "grass_4.ogg"
+        ]
+    },
     "quads": [
         {
             "vertices": [

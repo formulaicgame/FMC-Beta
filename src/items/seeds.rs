@@ -42,7 +42,7 @@ struct SeedConfig {
     pub soil: BlockId,
 }
 
-pub fn use_seeds(
+fn use_seeds(
     world_map: Res<WorldMap>,
     player_query: Query<&Targets, With<Player>>,
     mut hoe_uses: Query<(&mut ItemUses, &SeedConfig), Changed<ItemUses>>,

@@ -11,6 +11,20 @@
         "requires_tool": false,
         "drop": "torch"
     },
+    "sound": {
+        "place": [
+            "wood_1.ogg",
+            "wood_2.ogg",
+            "wood_3.ogg",
+            "wood_4.ogg"
+        ],
+        "destroy": [
+            "wood_1.ogg",
+            "wood_2.ogg",
+            "wood_3.ogg",
+            "wood_4.ogg"
+        ]
+    },
     "placement": {
         "ceiling": false,
         "sides": true,

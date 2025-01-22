@@ -14,6 +14,12 @@
         "drop": "dirt"
     },
     "sound": {
+        "place": [
+            "grass_1.ogg",
+            "grass_2.ogg",
+            "grass_3.ogg",
+            "grass_4.ogg"
+        ],
         "step": [
             "grass_1.ogg",
             "grass_2.ogg",

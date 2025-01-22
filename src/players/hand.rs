@@ -470,16 +470,19 @@ fn build_breaking_model() -> Model {
 }
 
 fn handle_right_clicks(
+    net: Res<Server>,
     world_map: Res<WorldMap>,
     items: Res<Items>,
     usable_items: Res<UsableItems>,
     model_map: Res<ModelMap>,
+    chunk_subscriptions: Res<ChunkSubscriptions>,
     model_query: Query<(&Aabb, &GlobalTransform), (With<Model>, Without<BlockPosition>)>,
     mut player_query: Query<(&mut Inventory, &Targets, &Camera), With<Player>>,
     mut item_use_query: Query<&mut ItemUses>,
     mut hand_interaction_query: Query<&mut HandInteractions>,
     mut block_update_writer: EventWriter<BlockUpdate>,
     mut clicks: EventReader<NetworkMessage<messages::RightClick>>,
+    mut rng: Local<Rng>,
 ) {
     // TODO: ActionOrder currently does nothing, but there needs to be some system for deviating
     // from the set order. Like if you hold shift, placing blocks should take precedence over
@@ -563,6 +566,24 @@ fn handle_right_clicks(
                         }
 
                         equipped_item_stack.take(1);
+
+                        if let Some(subscribers) =
+                            chunk_subscriptions.get_subscribers(&chunk_position)
+                        {
+                            let position = block_position.as_dvec3() + DVec3::splat(0.5);
+
+                            if let Some(place_sound) = block_config.sound.place(&mut rng) {
+                                net.send_many(
+                                    subscribers,
+                                    messages::Sound {
+                                        position: Some(position),
+                                        volume: 1.0,
+                                        speed: 1.0,
+                                        sound: place_sound.to_owned(),
+                                    },
+                                )
+                            }
+                        }
 
                         block_update_writer.send(BlockUpdate::Change {
                             position: replaced_block_position,

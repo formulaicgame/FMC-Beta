@@ -13,5 +13,31 @@
     "drop": {
         "requires_tool": false,
         "drop": "oak"
+    },
+    "sound": {
+        "place": [
+            "wood_1.ogg",
+            "wood_2.ogg",
+            "wood_3.ogg",
+            "wood_4.ogg"
+        ],
+        "step": [
+            "wood_1.ogg",
+            "wood_2.ogg",
+            "wood_3.ogg",
+            "wood_4.ogg"
+        ],
+        "hit": [
+            "wood_1.ogg",
+            "wood_2.ogg",
+            "wood_3.ogg",
+            "wood_4.ogg"
+        ],
+        "destroy": [
+            "wood_1.ogg",
+            "wood_2.ogg",
+            "wood_3.ogg",
+            "wood_4.ogg"
+        ]
     }
 }

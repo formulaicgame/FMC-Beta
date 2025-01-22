@@ -15,6 +15,12 @@
         "drop": "stone"
     },
     "sound": {
+        "place": [
+            "stone_1.ogg",
+            "stone_2.ogg",
+            "stone_3.ogg",
+            "stone_4.ogg"
+        ],
         "step": [
             "stone_1.ogg",
             "stone_2.ogg",

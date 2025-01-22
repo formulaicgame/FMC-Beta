@@ -1,7 +1,6 @@
 {
     "name": "Stick",
     "image": "stick.png",
-    "block": "dirt",
     "equip_model": "stick",
     "stack_size": 64,
     "categories": ["helmet"],
