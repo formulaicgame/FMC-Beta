@@ -29,14 +29,14 @@
         "ceiling": false,
         "sides": true,
         "floor": true,
-        "rotatable": false,
+        "centered": true,
+        "rotatable": true,
         "side_transform": {
             "translation": [
                 0.0,
                 0.2206,
                 -0.5
             ],
-            
             "rotation": [
                 0.191,
                 0,

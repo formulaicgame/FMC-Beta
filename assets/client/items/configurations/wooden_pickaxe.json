@@ -1,0 +1,10 @@
+{
+    "name": "Wooden Pickaxe",
+    "image": "wooden_pickaxe.png",
+    "equip_model": "wooden_pickaxe",
+    "stack_size": 1,
+    "tool": {
+        "name": "pickaxe",
+        "efficiency": 4
+    }
+}

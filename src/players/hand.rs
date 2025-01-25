@@ -477,7 +477,7 @@ fn handle_right_clicks(
     model_map: Res<ModelMap>,
     chunk_subscriptions: Res<ChunkSubscriptions>,
     model_query: Query<(&Aabb, &GlobalTransform), (With<Model>, Without<BlockPosition>)>,
-    mut player_query: Query<(&mut Inventory, &Targets, &Camera), With<Player>>,
+    mut player_query: Query<(&mut Inventory, &Targets), With<Player>>,
     mut item_use_query: Query<&mut ItemUses>,
     mut hand_interaction_query: Query<&mut HandInteractions>,
     mut block_update_writer: EventWriter<BlockUpdate>,
@@ -495,8 +495,7 @@ fn handle_right_clicks(
     }
 
     for right_click in clicks.read() {
-        let (mut inventory, targets, camera) =
-            player_query.get_mut(right_click.player_entity).unwrap();
+        let (mut inventory, targets) = player_query.get_mut(right_click.player_entity).unwrap();
 
         let mut action = ActionOrder::Interact;
 
@@ -544,8 +543,7 @@ fn handle_right_clicks(
                         &world_map,
                     ) {
                         let block_config = blocks.get_config(&block_id);
-                        let block_state =
-                            block_config.placement_rotation(camera.transform(), *block_face);
+                        let block_state = block_config.placement_rotation(*block_face);
 
                         let replaced_aabb = Aabb {
                             center: replaced_block_position.as_dvec3(),
@@ -625,6 +623,12 @@ fn block_placement(
     blocks: &Blocks,
     world_map: &WorldMap,
 ) -> Option<(BlockId, IVec3)> {
+    let against_block = blocks.get_config(&block_id);
+
+    if !against_block.is_solid() {
+        return None;
+    }
+
     let Some(item) = equipped_item_stack.item() else {
         // No item equipped, can't place block
         return None;
@@ -637,11 +641,11 @@ fn block_placement(
         return None;
     };
 
-    if !blocks.get_config(&new_block_id).placeable(block_face) {
+    if !blocks.get_config(&new_block_id).is_placeable(block_face) {
         return None;
     }
 
-    let replaced_block_position = if blocks.get_config(&block_id).replaceable {
+    let replaced_block_position = if against_block.replaceable {
         // Some blocks, like grass, can be replaced instead of placing the new
         // block adjacently to it.
         block_position

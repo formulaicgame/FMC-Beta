@@ -10,6 +10,7 @@
         "back": "stone.png"
     },
     "tools": ["pickaxe"],
+    "hardness": 6,
     "drop": {
         "requires_tool": true,
         "drop": "stone"

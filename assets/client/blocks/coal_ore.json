@@ -10,6 +10,7 @@
         "back": "coal_ore.png"
     },
     "tools": ["pickaxe"],
+    "hardness": 9,
     "drop": {
         "requires_tool": false,
         "drop": "coal_ore"

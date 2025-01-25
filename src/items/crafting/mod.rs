@@ -98,7 +98,7 @@ fn load_recipes(mut commands: Commands, items: Res<Items>) {
                         required_amount,
                         output_item: Item {
                             id: output_item,
-                            properties: serde_json::Value::Object(serde_json::Map::new()),
+                            properties: serde_json::Value::default(),
                         },
                         output_amount: recipe_json.output_amount,
                         data: recipe_json.data,
