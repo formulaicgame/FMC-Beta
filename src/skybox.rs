@@ -13,7 +13,7 @@ const DAY_LENGTH: f32 = 1200.0;
 
 fn day_night_cycle(time: Res<Time>, net: Res<Server>) {
     let message = messages::Time {
-        angle: time.elapsed_seconds() * std::f32::consts::TAU / DAY_LENGTH,
+        angle: time.elapsed_secs() * std::f32::consts::TAU / DAY_LENGTH,
     };
     net.broadcast(message);
 }

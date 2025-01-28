@@ -47,7 +47,7 @@ fn spawn_duck(
     time: Res<Time>,
     duck: Query<Entity, With<Duck>>,
 ) {
-    if time.elapsed_seconds() < 1.0 || duck.iter().count() == 1 {
+    if time.elapsed_secs() < 1.0 || duck.iter().count() == 1 {
         return;
     }
     if !world_map.contains_chunk(&IVec3::new(-16, 0, 0)) {
