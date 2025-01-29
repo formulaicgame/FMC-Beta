@@ -43,7 +43,7 @@ jobs:
         run: cargo build --release --target ${{ matrix.target }}
 
       - name: Rename Artifact
-        run: cp ./target/${{ matrix.target }}/release/server${{ matrix.file_extension }} ${{ matrix.target }}${{ matrix.file_extension }}
+        run: cp ./target/${{ matrix.target }}/release/fmc_vanilla${{ matrix.file_extension }} ${{ matrix.target }}${{ matrix.file_extension }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

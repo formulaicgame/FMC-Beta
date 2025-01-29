@@ -56,9 +56,12 @@ fn walk_dir<P: AsRef<std::path::Path>>(dir: P) -> Vec<std::path::PathBuf> {
 }
 
 fn get_asset_paths() -> Vec<PathBuf> {
-    let binary_dir = PathBuf::from(std::env::var_os("OUT_DIR").unwrap())
-        // TODO: Has to be a better way to locate the directory of the binary being built
-        .join("../../../../..");
+    // Find the directory where the manifest of the binary being built is.
+    let mut binary_dir = PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
+    while !binary_dir.ends_with("target") {
+        binary_dir.pop();
+    }
+    binary_dir.pop();
 
     let manifest_path = binary_dir.join("Cargo.toml");
 
