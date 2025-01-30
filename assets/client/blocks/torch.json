@@ -31,7 +31,7 @@
         "floor": true,
         "centered": true,
         "rotatable": true,
-        "side_transform": {
+        "rotation_transform": {
             "translation": [
                 0.0,
                 0.2206,
