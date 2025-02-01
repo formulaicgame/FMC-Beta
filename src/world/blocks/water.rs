@@ -361,7 +361,7 @@ struct WaterBlock {
 impl WaterBlock {
     fn rotate(&self, rotation: BlockRotation) -> Self {
         match rotation {
-            BlockRotation::Once => WaterBlock {
+            BlockRotation::Right => WaterBlock {
                 corners: [
                     self.corners[Corner::FarLeft as usize],
                     self.corners[Corner::Left as usize],
@@ -370,7 +370,7 @@ impl WaterBlock {
                 ],
                 is_source: self.is_source,
             },
-            BlockRotation::Twice => WaterBlock {
+            BlockRotation::Back => WaterBlock {
                 corners: [
                     self.corners[Corner::FarRight as usize],
                     self.corners[Corner::FarLeft as usize],
@@ -379,7 +379,7 @@ impl WaterBlock {
                 ],
                 is_source: self.is_source,
             },
-            BlockRotation::Thrice => WaterBlock {
+            BlockRotation::Left => WaterBlock {
                 corners: [
                     self.corners[Corner::Right as usize],
                     self.corners[Corner::FarRight as usize],
@@ -401,20 +401,19 @@ impl WaterBlock {
 
         self.corners[corner as usize] = water_level;
 
-        if self[corner.rotate(BlockRotation::Once)] < self[corner] {
-            self[corner.rotate(BlockRotation::Once)] = self[corner].decrement();
+        if self[corner.rotate(BlockRotation::Right)] < self[corner] {
+            self[corner.rotate(BlockRotation::Right)] = self[corner].decrement();
         }
 
-        if self[corner.rotate(BlockRotation::Thrice)] < self[corner] {
-            self[corner.rotate(BlockRotation::Thrice)] = self[corner].decrement();
+        if self[corner.rotate(BlockRotation::Left)] < self[corner] {
+            self[corner.rotate(BlockRotation::Left)] = self[corner].decrement();
         }
 
-        if self[corner.rotate(BlockRotation::Twice)] < self[corner.rotate(BlockRotation::Once)]
-            || self[corner.rotate(BlockRotation::Twice)]
-                < self[corner.rotate(BlockRotation::Thrice)]
+        if self[corner.rotate(BlockRotation::Back)] < self[corner.rotate(BlockRotation::Right)]
+            || self[corner.rotate(BlockRotation::Back)] < self[corner.rotate(BlockRotation::Left)]
         {
-            self[corner.rotate(BlockRotation::Twice)] = self[corner.rotate(BlockRotation::Once)]
-                .max(self[corner.rotate(BlockRotation::Thrice)])
+            self[corner.rotate(BlockRotation::Back)] = self[corner.rotate(BlockRotation::Right)]
+                .max(self[corner.rotate(BlockRotation::Left)])
                 .decrement();
         }
     }

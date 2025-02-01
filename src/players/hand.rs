@@ -249,6 +249,13 @@ fn break_blocks(
                 }
             }
 
+            // TODO: Dropping a block like this is too error prone. If two systems break a block at
+            // once, it will dupe. Also too much boilerplate just to drop an item, it should just
+            // be:
+            // block_break_events.send(BreakEvent {
+            //     position: IVec3,
+            //     something to signify if it should drop
+            // })
             block_update_writer.send(BlockUpdate::Change {
                 position: block_position,
                 block_id: blocks.get_id("air"),
