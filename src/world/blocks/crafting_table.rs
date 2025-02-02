@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use fmc::{
     bevy::ecs::system::EntityCommands,
     blocks::{BlockData, Blocks},
-    interfaces::{HeldInterfaceStack, InterfaceInteractionEvents, RegisterInterfaceProvider},
+    interfaces::{HeldInterfaceStack, InterfaceEvents, RegisterInterfaceNode},
     items::{ItemStack, Items},
     networking::Server,
     players::Player,
@@ -126,8 +126,8 @@ fn handle_interface_events(
     recipes: Res<Recipes>,
     mut player_query: Query<&mut HeldInterfaceStack, With<Player>>,
     mut input_events: Query<
-        (Entity, &mut CraftingTable, &mut InterfaceInteractionEvents),
-        Changed<InterfaceInteractionEvents>,
+        (Entity, &mut CraftingTable, &mut InterfaceEvents),
+        Changed<InterfaceEvents>,
     >,
 ) {
     for (crafting_table_entity, mut crafting_table, mut events) in input_events.iter_mut() {
@@ -216,18 +216,18 @@ fn handle_block_hits(
         (Entity, &CraftingTable, &mut HandInteractions),
         Changed<HandInteractions>,
     >,
-    mut registration_events: EventWriter<RegisterInterfaceProvider>,
+    mut registration_events: EventWriter<RegisterInterfaceNode>,
 ) {
     for (crafting_table_entity, crafting_table, mut block_hits) in block_hits.iter_mut() {
         for player_entity in block_hits.read() {
             registry.set_active_table(player_entity, crafting_table_entity);
 
-            registration_events.send(RegisterInterfaceProvider {
+            registration_events.send(RegisterInterfaceNode {
                 player_entity,
                 node_path: String::from("crafting_table/input"),
                 node_entity: crafting_table_entity,
             });
-            registration_events.send(RegisterInterfaceProvider {
+            registration_events.send(RegisterInterfaceNode {
                 player_entity,
                 node_path: String::from("crafting_table/output"),
                 node_entity: crafting_table_entity,

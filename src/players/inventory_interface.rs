@@ -1,7 +1,6 @@
 use fmc::{
     interfaces::{
-        HeldInterfaceStack, InterfaceEventRegistration, InterfaceInteractionEvents,
-        RegisterInterfaceProvider,
+        HeldInterfaceStack, InterfaceEventRegistration, InterfaceEvents, RegisterInterfaceNode,
     },
     items::{ItemStack, Items},
     networking::{NetworkMessage, Server},
@@ -44,61 +43,61 @@ fn initialize_interface(
     mut commands: Commands,
     net: Res<Server>,
     new_player_query: Query<Entity, Added<Player>>,
-    mut registration_events: EventWriter<RegisterInterfaceProvider>,
+    mut registration_events: EventWriter<RegisterInterfaceNode>,
 ) {
     for player_entity in new_player_query.iter() {
         commands.entity(player_entity).with_children(|parent| {
             let inventory_entity = parent.spawn(InventoryNode).id();
-            registration_events.send(RegisterInterfaceProvider {
+            registration_events.send(RegisterInterfaceNode {
                 player_entity,
                 node_path: String::from("inventory"),
                 node_entity: inventory_entity,
             });
 
             let hotbar_entity = parent.spawn(HotbarNode).id();
-            registration_events.send(RegisterInterfaceProvider {
+            registration_events.send(RegisterInterfaceNode {
                 player_entity,
                 node_path: String::from("hotbar"),
                 node_entity: hotbar_entity,
             });
 
             let helmet_entity = parent.spawn(HelmetNode).id();
-            registration_events.send(RegisterInterfaceProvider {
+            registration_events.send(RegisterInterfaceNode {
                 player_entity,
                 node_path: String::from("equipment/helmet"),
                 node_entity: helmet_entity,
             });
 
             let chestplate_entity = parent.spawn(ChestplateNode).id();
-            registration_events.send(RegisterInterfaceProvider {
+            registration_events.send(RegisterInterfaceNode {
                 player_entity,
                 node_path: String::from("equipment/chestplate"),
                 node_entity: chestplate_entity,
             });
 
             let leggings_entity = parent.spawn(LeggingsNode).id();
-            registration_events.send(RegisterInterfaceProvider {
+            registration_events.send(RegisterInterfaceNode {
                 player_entity,
                 node_path: String::from("equipment/leggings"),
                 node_entity: leggings_entity,
             });
 
             let boots_entity = parent.spawn(BootsNode).id();
-            registration_events.send(RegisterInterfaceProvider {
+            registration_events.send(RegisterInterfaceNode {
                 player_entity,
                 node_path: String::from("equipment/boots"),
                 node_entity: boots_entity,
             });
 
             let crafting_input_entity = parent.spawn(CraftingInput).id();
-            registration_events.send(RegisterInterfaceProvider {
+            registration_events.send(RegisterInterfaceNode {
                 player_entity,
                 node_path: String::from("inventory/crafting_input"),
                 node_entity: crafting_input_entity,
             });
 
             let crafting_output_entity = parent.spawn(CraftingOutput).id();
-            registration_events.send(RegisterInterfaceProvider {
+            registration_events.send(RegisterInterfaceNode {
                 player_entity,
                 node_path: String::from("inventory/crafting_output"),
                 node_entity: crafting_output_entity,
@@ -204,8 +203,8 @@ struct InventoryNode;
 fn handle_inventory_events(
     mut inventory_query: Query<(&mut Inventory, &mut HeldInterfaceStack), With<Player>>,
     mut interface_events: Query<
-        (&mut InterfaceInteractionEvents, &Parent),
-        (Changed<InterfaceInteractionEvents>, With<InventoryNode>),
+        (&mut InterfaceEvents, &Parent),
+        (Changed<InterfaceEvents>, With<InventoryNode>),
     >,
 ) {
     for (mut events, parent) in interface_events.iter_mut() {
@@ -242,8 +241,8 @@ struct HotbarNode;
 fn handle_hotbar_events(
     mut inventory_query: Query<(&mut Inventory, &mut HeldInterfaceStack), With<Player>>,
     mut interface_events: Query<
-        (&mut InterfaceInteractionEvents, &Parent),
-        (Changed<InterfaceInteractionEvents>, With<HotbarNode>),
+        (&mut InterfaceEvents, &Parent),
+        (Changed<InterfaceEvents>, With<HotbarNode>),
     >,
 ) {
     for (mut events, parent) in interface_events.iter_mut() {
@@ -328,8 +327,8 @@ fn handle_equipment_events<T: EquipmentNode + Component>(
     items: Res<Items>,
     mut inventory_query: Query<(&mut Equipment, &mut HeldInterfaceStack), With<Player>>,
     mut interface_events: Query<
-        (&mut InterfaceInteractionEvents, &Parent),
-        (Changed<InterfaceInteractionEvents>, With<T>),
+        (&mut InterfaceEvents, &Parent),
+        (Changed<InterfaceEvents>, With<T>),
     >,
 ) {
     for (mut events, parent) in interface_events.iter_mut() {
@@ -368,8 +367,8 @@ fn handle_crafting_input_events(
     recipes: Res<Recipes>,
     mut inventory_query: Query<(Entity, &mut HeldInterfaceStack, &mut CraftingGrid), With<Player>>,
     mut interface_events: Query<
-        (&mut InterfaceInteractionEvents, &Parent),
-        (Changed<InterfaceInteractionEvents>, With<CraftingInput>),
+        (&mut InterfaceEvents, &Parent),
+        (Changed<InterfaceEvents>, With<CraftingInput>),
     >,
 ) {
     for (mut events, parent) in interface_events.iter_mut() {
@@ -425,8 +424,8 @@ fn handle_crafting_output_events(
     items: Res<Items>,
     mut inventory_query: Query<(Entity, &mut CraftingGrid, &mut HeldInterfaceStack), With<Player>>,
     mut interface_events: Query<
-        (&mut InterfaceInteractionEvents, &Parent),
-        (Changed<InterfaceInteractionEvents>, With<CraftingOutput>),
+        (&mut InterfaceEvents, &Parent),
+        (Changed<InterfaceEvents>, With<CraftingOutput>),
     >,
 ) {
     for (mut events, parent) in interface_events.iter_mut() {
