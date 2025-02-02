@@ -1,7 +1,5 @@
 use fmc::{
-    interfaces::{
-        InterfaceEventRegistration, InterfaceInteractionEvents, RegisterInterfaceProvider,
-    },
+    interfaces::{InterfaceEventRegistration, InterfaceEvents, RegisterInterfaceNode},
     networking::{NetworkMessage, Server},
     players::Player,
     prelude::*,
@@ -31,7 +29,7 @@ impl Plugin for HealthPlugin {
 
 #[derive(Default, Bundle)]
 pub struct HealthBundle {
-    health: Health,
+    pub health: Health,
     fall_damage: FallDamage,
 }
 
@@ -60,25 +58,39 @@ impl Default for Health {
 }
 
 impl Health {
-    pub fn take_damage(&mut self, damage: u32) -> messages::InterfaceNodeVisibilityUpdate {
-        let old_hearts = self.hearts;
-        self.hearts = self.hearts.saturating_sub(damage);
-
+    fn build_interface(&self) -> messages::InterfaceNodeVisibilityUpdate {
         let mut image_update = messages::InterfaceNodeVisibilityUpdate::default();
-        for i in self.hearts..old_hearts {
-            image_update.set_hidden(format!("hotbar/health/{}", i + 1));
+
+        for i in 0..self.hearts {
+            image_update.set_visible(format!("health/{}", i + 1));
+        }
+
+        for i in self.hearts..self.max {
+            image_update.set_hidden(format!("health/{}", i + 1));
         }
 
         image_update
     }
 
-    pub fn heal(&mut self, healing: u32) -> messages::InterfaceNodeVisibilityUpdate {
+    fn take_damage(&mut self, damage: u32) -> messages::InterfaceNodeVisibilityUpdate {
+        let old_hearts = self.hearts;
+        self.hearts = self.hearts.saturating_sub(damage);
+
+        let mut image_update = messages::InterfaceNodeVisibilityUpdate::default();
+        for i in self.hearts..old_hearts {
+            image_update.set_hidden(format!("health/{}", i + 1));
+        }
+
+        image_update
+    }
+
+    fn heal(&mut self, healing: u32) -> messages::InterfaceNodeVisibilityUpdate {
         let old_hearts = self.hearts;
         self.hearts = self.hearts.saturating_add(healing).min(self.max);
 
         let mut image_update = messages::InterfaceNodeVisibilityUpdate::default();
         for i in old_hearts..self.hearts {
-            image_update.set_visible(format!("hotbar/health/{}", i + 1));
+            image_update.set_visible(format!("health/{}", i + 1));
         }
 
         image_update
@@ -106,15 +118,15 @@ fn fall_damage(
     mut damage_events: EventWriter<DamageEvent>,
 ) {
     for position_update in position_events.read() {
-        let (_entity, mut fall_damage) = fall_damage_query
+        let (entity, mut fall_damage) = fall_damage_query
             .get_mut(position_update.player_entity)
             .unwrap();
 
         if fall_damage.0 != 0 && position_update.velocity.y > -0.1 {
-            //damage_events.send(DamageEvent {
-            //    entity,
-            //    damage: fall_damage.0,
-            //});
+            damage_events.send(DamageEvent {
+                player_entity: entity,
+                damage: fall_damage.0,
+            });
             fall_damage.0 = 0;
         } else if position_update.velocity.y < 0.0 {
             fall_damage.0 = (position_update.velocity.y.abs() as u32).saturating_sub(15);
@@ -124,23 +136,34 @@ fn fall_damage(
 
 fn change_health(
     net: Res<Server>,
-    mut health_query: Query<&mut Health>,
+    mut health_query: Query<(Entity, Mut<Health>)>,
     mut damage_events: EventReader<DamageEvent>,
     mut heal_events: EventReader<HealEvent>,
 ) {
-    for damage_event in damage_events.read() {
-        let mut health = health_query.get_mut(damage_event.player_entity).unwrap();
-        let mut interface_update = health.take_damage(damage_event.damage);
-
-        if health.hearts == 0 {
-            interface_update.set_visible("death_screen".to_owned());
+    for (player_entity, health) in health_query.iter() {
+        if health.is_added() {
+            net.send_one(player_entity, health.build_interface());
         }
+    }
+    for damage_event in damage_events.read() {
+        let (_, mut health) = health_query.get_mut(damage_event.player_entity).unwrap();
+        let interface_update = health.take_damage(damage_event.damage);
 
         net.send_one(damage_event.player_entity, interface_update);
+
+        if health.hearts == 0 {
+            net.send_one(
+                damage_event.player_entity,
+                messages::InterfaceVisibilityUpdate {
+                    interface_path: "death".to_owned(),
+                    visible: true,
+                },
+            );
+        }
     }
 
     for heal_event in heal_events.read() {
-        let mut health = health_query.get_mut(heal_event.player_entity).unwrap();
+        let (_, mut health) = health_query.get_mut(heal_event.player_entity).unwrap();
         let interface_update = health.heal(heal_event.healing);
         net.send_one(heal_event.player_entity, interface_update);
     }
@@ -152,15 +175,15 @@ struct DeathInterface;
 fn register_death_interface(
     mut commands: Commands,
     new_player_query: Query<Entity, Added<Player>>,
-    mut registration_events: EventWriter<RegisterInterfaceProvider>,
+    mut registration_events: EventWriter<RegisterInterfaceNode>,
 ) {
     for player_entity in new_player_query.iter() {
         commands.entity(player_entity).with_children(|parent| {
             let death_interface_entity = parent.spawn(DeathInterface).id();
 
-            registration_events.send(RegisterInterfaceProvider {
+            registration_events.send(RegisterInterfaceNode {
                 player_entity,
-                node_path: String::from("death_interface"),
+                node_path: String::from("death/respawn_button"),
                 node_entity: death_interface_entity,
             });
         });
@@ -172,8 +195,8 @@ fn register_death_interface(
 fn death_interface(
     net: Res<Server>,
     mut interface_query: Query<
-        &mut InterfaceInteractionEvents,
-        (Changed<InterfaceInteractionEvents>, With<DeathInterface>),
+        &mut InterfaceEvents,
+        (Changed<InterfaceEvents>, With<DeathInterface>),
     >,
     mut respawn_events: EventWriter<RespawnEvent>,
     mut heal_events: EventWriter<HealEvent>,
@@ -198,8 +221,8 @@ fn death_interface(
             net.send_one(
                 interface_interaction.player_entity,
                 messages::InterfaceVisibilityUpdate {
-                    interface_path: "death_screen".to_owned(),
-                    visible: true,
+                    interface_path: "death".to_owned(),
+                    visible: false,
                 },
             );
         }

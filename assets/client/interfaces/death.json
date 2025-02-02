@@ -1,5 +1,5 @@
 {
-  "path": "death_screen",
+  "path": "death",
   "exclusive": true,
   "style": {
     "position_type": "Absolute",
@@ -31,22 +31,22 @@
           "justify_content": "Center",
           "align_items": "Center",
           "width": {
-              "Percent": 100
+            "Percent": 100
           }
         },
         "content": {
-            "Text": {
-                "text": "Total Death!",
-                "font_size": 18,
-                "color": {
-                    "LinearRgba": {
-                        "red": 1,
-                        "green": 1,
-                        "blue": 1,
-                        "alpha": 1
-                    }
-                }
+          "Text": {
+            "text": "Death!",
+            "font_size": 18,
+            "color": {
+              "LinearRgba": {
+                "red": 1,
+                "green": 1,
+                "blue": 1,
+                "alpha": 1
+              }
             }
+          }
         }
       },
       {

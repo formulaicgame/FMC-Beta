@@ -100,7 +100,7 @@ pub struct PlayerBundle {
     inventory: Inventory,
     equipment: Equipment,
     crafting_table: CraftingGrid,
-    health: HealthBundle,
+    health_bundle: HealthBundle,
     gamemode: GameMode,
 }
 
@@ -113,7 +113,7 @@ impl Default for PlayerBundle {
             inventory: Inventory::default(),
             equipment: Equipment::default(),
             crafting_table: CraftingGrid::with_size(4),
-            health: HealthBundle::default(),
+            health_bundle: HealthBundle::default(),
             gamemode: GameMode::Survival,
         }
     }
@@ -130,7 +130,7 @@ impl From<PlayerSave> for PlayerBundle {
             }),
             inventory: save.inventory,
             equipment: save.equipment,
-            health: HealthBundle::from_health(save.health),
+            health_bundle: HealthBundle::from_health(save.health),
             ..default()
         }
     }
