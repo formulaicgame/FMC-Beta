@@ -18,26 +18,22 @@
         "place": [
             "gravel_1.ogg",
             "gravel_2.ogg",
-            "gravel_3.ogg",
-            "gravel_4.ogg"
+            "gravel_3.ogg"
         ],
         "step": [
             "gravel_1.ogg",
             "gravel_2.ogg",
-            "gravel_3.ogg",
-            "gravel_4.ogg"
+            "gravel_3.ogg"
         ],
         "hit": [
             "gravel_1.ogg",
             "gravel_2.ogg",
-            "gravel_3.ogg",
-            "gravel_4.ogg"
+            "gravel_3.ogg"
         ],
         "destroy": [
             "gravel_1.ogg",
             "gravel_2.ogg",
-            "gravel_3.ogg",
-            "gravel_4.ogg"
+            "gravel_3.ogg"
         ]
     }
 }

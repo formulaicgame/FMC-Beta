@@ -8,3 +8,6 @@ LICENSED UNDER [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)
 LICENSED UNDER [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)
 [grass4.wav](https://freesound.org/people/Snoman/sounds/9907/) by Snoman
 LICENSED UNDER [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)
+[hurt2.wav] by thecheeseman
+LICENSED UNDER [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)
+
