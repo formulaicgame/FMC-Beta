@@ -136,20 +136,26 @@ fn fall_damage(
 
 fn change_health(
     net: Res<Server>,
-    mut health_query: Query<(Entity, Mut<Health>)>,
+    mut health_query: Query<(Entity, &Transform, Mut<Health>)>,
     mut damage_events: EventReader<DamageEvent>,
     mut heal_events: EventReader<HealEvent>,
 ) {
-    for (player_entity, health) in health_query.iter() {
+    for (player_entity, _, health) in health_query.iter() {
         if health.is_added() {
             net.send_one(player_entity, health.build_interface());
         }
     }
     for damage_event in damage_events.read() {
-        let (_, mut health) = health_query.get_mut(damage_event.player_entity).unwrap();
+        let (_, transform, mut health) = health_query.get_mut(damage_event.player_entity).unwrap();
         let interface_update = health.take_damage(damage_event.damage);
 
         net.send_one(damage_event.player_entity, interface_update);
+        net.broadcast(messages::Sound {
+            position: Some(transform.translation),
+            volume: 1.0,
+            speed: 1.0,
+            sound: "player_damage.ogg".to_owned(),
+        });
 
         if health.hearts == 0 {
             net.send_one(
@@ -163,7 +169,7 @@ fn change_health(
     }
 
     for heal_event in heal_events.read() {
-        let (_, mut health) = health_query.get_mut(heal_event.player_entity).unwrap();
+        let (_, _, mut health) = health_query.get_mut(heal_event.player_entity).unwrap();
         let interface_update = health.heal(heal_event.healing);
         net.send_one(heal_event.player_entity, interface_update);
     }
