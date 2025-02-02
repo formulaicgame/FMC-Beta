@@ -11,13 +11,13 @@ use fmc::{
     world::{BlockUpdate, ChunkSubscriptions},
 };
 
-use super::{GroundItemBundle, ItemUses, UsableItems};
+use super::{GroundItemBundle, ItemRegistry, ItemUses};
 
 pub struct HoePlugin;
 impl Plugin for HoePlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, register_hoes)
-            .add_systems(Update, use_hoe.after(super::RegisterItemUse));
+            .add_systems(Update, use_hoe.after(super::ItemUseSystems));
     }
 }
 
@@ -25,7 +25,7 @@ fn register_hoes(
     mut commands: Commands,
     blocks: Res<Blocks>,
     items: Res<Items>,
-    mut usable_items: ResMut<UsableItems>,
+    mut usable_items: ResMut<ItemRegistry>,
 ) {
     usable_items.insert(
         items.get_id("hoe").unwrap(),

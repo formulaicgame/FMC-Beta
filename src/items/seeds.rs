@@ -6,13 +6,13 @@ use fmc::{
     world::{BlockUpdate, WorldMap},
 };
 
-use super::{ItemUses, UsableItems};
+use super::{ItemRegistry, ItemUses};
 
 pub struct SeedPlugin;
 impl Plugin for SeedPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, register_seeds)
-            .add_systems(Update, use_seeds.after(super::RegisterItemUse));
+            .add_systems(Update, use_seeds.after(super::ItemUseSystems));
     }
 }
 
@@ -20,7 +20,7 @@ fn register_seeds(
     mut commands: Commands,
     blocks: Res<Blocks>,
     items: Res<Items>,
-    mut usable_items: ResMut<UsableItems>,
+    mut usable_items: ResMut<ItemRegistry>,
 ) {
     usable_items.insert(
         items.get_id("wheat_seeds").unwrap(),

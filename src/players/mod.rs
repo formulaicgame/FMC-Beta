@@ -23,6 +23,7 @@ mod health;
 mod inventory_interface;
 
 pub use hand::HandInteractions;
+pub use health::{DamageEvent, HealEvent};
 
 pub struct PlayerPlugin;
 impl Plugin for PlayerPlugin {

@@ -15,7 +15,7 @@ use fmc::{
 };
 
 use crate::{
-    items::{GroundItemBundle, ItemUses, RegisterItemUse, UsableItems},
+    items::{GroundItemBundle, ItemRegistry, ItemUseSystems, ItemUses},
     players::Inventory,
 };
 
@@ -27,7 +27,7 @@ impl Plugin for HandPlugin {
                 Update,
                 (
                     handle_left_clicks,
-                    handle_right_clicks.in_set(RegisterItemUse),
+                    handle_right_clicks.in_set(ItemUseSystems),
                     break_blocks.after(handle_left_clicks),
                 ),
             );
@@ -480,7 +480,7 @@ fn handle_right_clicks(
     net: Res<Server>,
     world_map: Res<WorldMap>,
     items: Res<Items>,
-    usable_items: Res<UsableItems>,
+    item_registry: Res<ItemRegistry>,
     model_map: Res<ModelMap>,
     chunk_subscriptions: Res<ChunkSubscriptions>,
     model_query: Query<(&Aabb, &GlobalTransform), (With<Model>, Without<BlockPosition>)>,
@@ -609,7 +609,7 @@ fn handle_right_clicks(
                         break;
                     };
 
-                    if let Some(item_use_entity) = usable_items.get(&item.id) {
+                    if let Some(item_use_entity) = item_registry.get(&item.id) {
                         let mut uses = item_use_query.get_mut(*item_use_entity).unwrap();
                         uses.push(right_click.player_entity);
                     }

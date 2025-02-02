@@ -101,15 +101,15 @@ impl Health {
 struct FallDamage(u32);
 
 #[derive(Event)]
-struct DamageEvent {
-    player_entity: Entity,
-    damage: u32,
+pub struct DamageEvent {
+    pub player_entity: Entity,
+    pub damage: u32,
 }
 
 #[derive(Event)]
-struct HealEvent {
-    player_entity: Entity,
-    healing: u32,
+pub struct HealEvent {
+    pub player_entity: Entity,
+    pub healing: u32,
 }
 
 fn fall_damage(
