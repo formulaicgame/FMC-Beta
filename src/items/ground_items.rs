@@ -39,17 +39,14 @@ impl GroundItemBundle {
 
         // TODO: This won't work if the model must be scaled up
         //
-        // We want dropped items to have a uniform size. If the model's width is
-        // larger than HALF_SIZE*2 we scale it by width to fit in a 0.15 wide square. If it
-        // is already smaller than that, we instead scale the height down to 0.15.
-        const HALF_SIZE: f64 = 0.075;
+        // We want dropped items to have a uniform size. If the model's width is larger than
+        // HALF_SIZE*2 we scale it by width. If it is already smaller than that, we instead scale
+        // the height.
+        const HALF_SIZE: f64 = 0.1;
         let aabb = model_config.aabb.clone();
         let xz_scale = HALF_SIZE / aabb.half_extents.x.max(aabb.half_extents.z);
         let y_scale = HALF_SIZE * 1.5 / aabb.half_extents.y;
         let scale = if xz_scale < 1.0 { xz_scale } else { y_scale };
-
-        let random = rand::random::<f64>() * std::f64::consts::TAU;
-        let (velocity_x, velocity_z) = random.sin_cos();
 
         let model_bundle = ModelBundle {
             model: Model::Asset(item_config.model_id),
@@ -63,12 +60,15 @@ impl GroundItemBundle {
             },
         };
 
+        let random = rand::random::<f64>() * std::f64::consts::TAU;
+        let (velocity_x, velocity_z) = random.sin_cos();
+
         let physics_bundle = PhysicsBundle {
             velocity: Velocity(DVec3::new(velocity_x * 3.0, 6.5, velocity_z * 3.0)),
             aabb: Aabb {
-                //Offset the aabb slightly downwards to make the item float for clients.
-                center: DVec3::new(0.0, -0.1, 0.0),
-                half_extents: DVec3::splat(HALF_SIZE),
+                //Offset the aabb slightly downwards to make the item float.
+                center: aabb.center * scale + DVec3::new(0.0, -0.1, 0.0),
+                half_extents: aabb.half_extents * scale,
             },
             ..default()
         };

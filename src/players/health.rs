@@ -129,7 +129,7 @@ fn fall_damage(
             });
             fall_damage.0 = 0;
         } else if position_update.velocity.y < 0.0 {
-            fall_damage.0 = (position_update.velocity.y.abs() as u32).saturating_sub(15);
+            fall_damage.0 = (position_update.velocity.y.abs() as u32).saturating_sub(20);
         }
     }
 }
