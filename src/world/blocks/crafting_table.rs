@@ -157,13 +157,13 @@ fn handle_interface_events(
                         let amount = if held_item.is_empty() {
                             *quantity
                         } else {
-                            std::cmp::min(held_item.capacity(), *quantity)
+                            std::cmp::min(held_item.remaining_capacity(), *quantity)
                         };
 
-                        if let Some(item_stack) =
+                        if let Some(mut item_stack) =
                             recipes.get("crafting").craft(&mut crafting_table, amount)
                         {
-                            held_item.add(item_stack);
+                            item_stack.transfer_to(&mut held_item, u32::MAX);
                         } else {
                             continue;
                         }

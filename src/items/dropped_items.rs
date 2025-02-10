@@ -107,7 +107,8 @@ fn pick_up_items(
                     // an interface update to the client. Can't pick up = spam
                     let mut capacity = false;
                     for item_stack in player_inventory.iter() {
-                        if (item_stack.item() == dropped_item.item() && item_stack.capacity() != 0)
+                        if (item_stack.item() == dropped_item.item()
+                            && item_stack.remaining_capacity() != 0)
                             || item_stack.is_empty()
                         {
                             capacity = true;
