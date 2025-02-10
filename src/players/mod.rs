@@ -3,13 +3,12 @@ use fmc::{
     blocks::{BlockPosition, Blocks},
     database::Database,
     items::ItemStack,
-    models::{Model, ModelAnimations, ModelVisibility, Models},
+    models::{Model, Models},
     networking::{NetworkEvent, NetworkMessage, Server},
-    physics::{shapes::Aabb, Collider},
+    physics::Collider,
     players::{Camera, Player},
     prelude::*,
     protocol::messages,
-    utils,
     world::{
         chunk::{Chunk, ChunkPosition},
         WorldMap,
@@ -19,14 +18,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::{items::crafting::CraftingGrid, world::WorldProperties};
 
-use self::health::{Health, HealthBundle};
+use self::health::HealthBundle;
 
 mod hand;
 mod health;
 mod inventory_interface;
 
 pub use hand::HandInteractions;
-pub use health::{DamageEvent, HealEvent};
+pub use health::{DamageEvent, HealEvent, Health};
 
 pub struct PlayerPlugin;
 impl Plugin for PlayerPlugin {
@@ -294,6 +293,8 @@ fn respawn_players(
     world_properties: Res<WorldProperties>,
     world_map: Res<WorldMap>,
     database: Res<Database>,
+    mut player_query: Query<&mut Transform, With<Player>>,
+    mut heal_events: EventWriter<HealEvent>,
     mut respawn_events: EventReader<RespawnEvent>,
 ) {
     for respawn_event in respawn_events.read() {
@@ -333,15 +334,23 @@ fn respawn_players(
             chunk_position.y += Chunk::SIZE as i32;
         };
 
+        let spawn_position = spawn_position.as_dvec3() + DVec3::new(0.5, 0.0, 0.5);
+
+        // TODO: Because of the latency before the client reports back its new position, the player will
+        // be alive for a small moment at the spot they died, picking up their items again. So we
+        // have to set the position server side too.
+        let mut player_transform = player_query.get_mut(respawn_event.player_entity).unwrap();
+        player_transform.translation = spawn_position;
+
+        heal_events.send(HealEvent {
+            player_entity: respawn_event.player_entity,
+            healing: u32::MAX,
+        });
+
         net.send_one(
             respawn_event.player_entity,
             messages::PlayerPosition {
-                position: spawn_position.as_dvec3()
-                    + DVec3 {
-                        x: 0.5,
-                        y: 0.0,
-                        z: 0.5,
-                    },
+                position: spawn_position,
                 velocity: DVec3::ZERO,
             },
         );

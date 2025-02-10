@@ -8,7 +8,7 @@ use fmc::{
     world::chunk::ChunkPosition,
 };
 
-use crate::players::Inventory;
+use crate::players::{Health, Inventory};
 
 pub struct DroppedItemsPlugin;
 impl Plugin for DroppedItemsPlugin {
@@ -85,10 +85,14 @@ fn manage_item_models(
 fn pick_up_items(
     mut commands: Commands,
     model_map: Res<ModelMap>,
-    mut players: Query<(&GlobalTransform, &mut Inventory), Changed<GlobalTransform>>,
+    mut players: Query<(&GlobalTransform, &mut Inventory, &Health), Changed<GlobalTransform>>,
     mut dropped_items: Query<(Entity, &mut DroppedItem, &Transform)>,
 ) {
-    for (player_position, mut player_inventory) in players.iter_mut() {
+    for (player_position, mut player_inventory, health) in players.iter_mut() {
+        if health.is_dead() {
+            continue;
+        }
+
         let chunk_position = ChunkPosition::from(player_position.translation());
         let item_entities = match model_map.get_entities(&chunk_position) {
             Some(e) => e,

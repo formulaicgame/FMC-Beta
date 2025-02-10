@@ -1,10 +1,13 @@
 use fmc::{
+    bevy::math::DVec3,
     interfaces::{InterfaceEventRegistration, InterfaceEvents, RegisterInterfaceNode},
     items::ItemStack,
     networking::{NetworkMessage, Server},
+    physics::Physics,
     players::Player,
     prelude::*,
     protocol::messages,
+    utils::Rng,
 };
 
 use serde::{Deserialize, Serialize};
@@ -98,6 +101,10 @@ impl Health {
 
         image_update
     }
+
+    pub fn is_dead(&self) -> bool {
+        self.hearts == 0
+    }
 }
 
 #[derive(Component, Default)]
@@ -149,6 +156,7 @@ fn change_health(
     )>,
     mut damage_events: EventReader<DamageEvent>,
     mut heal_events: EventReader<HealEvent>,
+    mut rng: Local<Rng>,
 ) {
     for (player_entity, _, _, _, health) in health_query.iter() {
         if health.is_added() {
@@ -182,9 +190,21 @@ fn change_health(
                     continue;
                 }
 
+                let random_direction = (rng.next_f32() * std::f32::consts::TAU) as f64;
+                let velocity_x = random_direction.sin() as f64 * 15.0 * rng.next_f32() as f64;
+                let velocity_z = random_direction.cos() as f64 * 15.0 * rng.next_f32() as f64;
+                let velocity_y = 6.5;
+
                 let mut new_item_stack = ItemStack::default();
                 item_stack.swap(&mut new_item_stack);
-                commands.spawn((DroppedItem::new(new_item_stack), transform.clone()));
+                commands.spawn((
+                    DroppedItem::new(new_item_stack),
+                    transform.clone(),
+                    Physics {
+                        velocity: DVec3::new(velocity_x, velocity_y, velocity_z),
+                        ..default()
+                    },
+                ));
             }
             net.send_one(
                 damage_event.player_entity,
@@ -233,7 +253,6 @@ fn death_interface(
         (Changed<InterfaceEvents>, With<DeathInterface>),
     >,
     mut respawn_events: EventWriter<RespawnEvent>,
-    mut heal_events: EventWriter<HealEvent>,
 ) {
     for mut interface_events in interface_query.iter_mut() {
         for interface_interaction in interface_events.read() {
@@ -246,10 +265,6 @@ fn death_interface(
 
             respawn_events.send(RespawnEvent {
                 player_entity: interface_interaction.player_entity,
-            });
-            heal_events.send(HealEvent {
-                player_entity: interface_interaction.player_entity,
-                healing: u32::MAX,
             });
 
             net.send_one(
