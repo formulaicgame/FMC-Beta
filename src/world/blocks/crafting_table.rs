@@ -122,7 +122,6 @@ fn spawn_function(commands: &mut EntityCommands, block_data: Option<&BlockData>)
 fn handle_interface_events(
     net: Res<Server>,
     registry: Res<CraftingTableRegistry>,
-    items: Res<Items>,
     recipes: Res<Recipes>,
     mut player_query: Query<&mut HeldInterfaceStack, With<Player>>,
     mut input_events: Query<
@@ -154,24 +153,17 @@ fn handle_interface_events(
                         continue;
                     };
 
-                    let item_config = items.get_config(&output.item().unwrap().id);
-
                     if held_item.is_empty() || held_item.item() == output.item() {
                         let amount = if held_item.is_empty() {
-                            std::cmp::min(item_config.max_stack_size, *quantity)
+                            *quantity
                         } else {
                             std::cmp::min(held_item.capacity(), *quantity)
                         };
 
-                        if let Some((item, amount)) =
+                        if let Some(item_stack) =
                             recipes.get("crafting").craft(&mut crafting_table, amount)
                         {
-                            // TODO: Clean up when 'craft' return value is converted to ItemStack
-                            held_item.item_stack = ItemStack::new(
-                                item,
-                                held_item.size() + amount,
-                                item_config.max_stack_size,
-                            );
+                            held_item.add(item_stack);
                         } else {
                             continue;
                         }

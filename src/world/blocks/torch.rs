@@ -1,13 +1,12 @@
 use fmc::{
     bevy::math::DVec3,
     blocks::{BlockRotation, Blocks},
-    items::Items,
-    models::Models,
+    items::{Item, ItemStack, Items},
     prelude::*,
     world::{BlockUpdate, ChangedBlockEvent},
 };
 
-use crate::items::GroundItemBundle;
+use crate::items::DroppedItem;
 
 pub struct TorchPlugin;
 impl Plugin for TorchPlugin {
@@ -23,7 +22,6 @@ impl Plugin for TorchPlugin {
 fn fragile_break(
     mut commands: Commands,
     items: Res<Items>,
-    models: Res<Models>,
     mut changed_blocks: EventReader<ChangedBlockEvent>,
     mut block_updates: EventWriter<BlockUpdate>,
 ) {
@@ -65,15 +63,13 @@ fn fragile_break(
                         Some(drop) => drop,
                         None => continue,
                     };
-                    let item_config = items.get_config(&dropped_item_id);
-                    let model_config = models.get_by_id(item_config.model_id);
 
-                    commands.spawn(GroundItemBundle::new(
-                        dropped_item_id,
-                        item_config,
-                        model_config,
-                        count,
-                        position.as_dvec3() + DVec3::splat(0.5),
+                    let item_config = items.get_config(&dropped_item_id);
+                    let item_stack = ItemStack::new(item_config, count);
+
+                    commands.spawn((
+                        DroppedItem::new(item_stack),
+                        Transform::from_translation(position.as_dvec3() + DVec3::splat(0.5)),
                     ));
                 }
             }

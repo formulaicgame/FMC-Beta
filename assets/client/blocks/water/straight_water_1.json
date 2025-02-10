@@ -2,13 +2,11 @@
     "type": "cube",
     "name": "straight_water_1",
     "material": "water",
-    "friction": {
-        "drag": [
-            0.8,
-            0.5,
-            0.8
-        ]
-    },
+    "drag": [
+        0.8,
+        0.5,
+        0.8
+    ],
     "light_attenuation": 0,
     "fog": {
         "color": {

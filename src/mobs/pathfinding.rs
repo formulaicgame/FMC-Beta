@@ -2,7 +2,7 @@ use std::collections::BinaryHeap;
 
 use fmc::{
     bevy::math::{DVec2, DVec3},
-    blocks::{Blocks, Friction},
+    blocks::{BlockPosition, Blocks, Friction},
     prelude::*,
     world::WorldMap,
 };
@@ -12,7 +12,7 @@ use indexmap::{map::Entry, IndexMap};
 pub struct PathFinder {
     entity_width: usize,
     entity_height: usize,
-    block_goal: IVec3,
+    block_goal: BlockPosition,
     path: Vec<DVec3>,
 }
 
@@ -21,14 +21,14 @@ impl PathFinder {
         return Self {
             entity_width: width,
             entity_height: height,
-            block_goal: IVec3::default(),
+            block_goal: BlockPosition::default(),
             path: Vec::new(),
         };
     }
 
     pub fn find_path(&mut self, world_map: &WorldMap, start: DVec3, goal: DVec3) {
-        let block_start = start.floor().as_ivec3();
-        let block_goal = goal.floor().as_ivec3();
+        let block_start = BlockPosition::from(start);
+        let block_goal = BlockPosition::from(goal);
         if block_start != block_goal && self.block_goal != block_goal {
             self.block_goal = block_goal;
         } else {
@@ -133,20 +133,21 @@ impl PathFinder {
         None
     }
 
-    fn get_move_cost(world_map: &WorldMap, position: IVec3) -> f32 {
+    fn get_move_cost(world_map: &WorldMap, position: BlockPosition) -> f32 {
         if let Some(block_id) = world_map.get_block(position) {
             let block_config = Blocks::get().get_config(&block_id);
-            match block_config.friction {
-                Friction::Static { .. } => f32::INFINITY,
-                Friction::Drag(drag) => drag.max_element() as f32,
+            if block_config.is_solid() {
+                f32::INFINITY
+            } else {
+                block_config.drag.max_element() as f32
             }
         } else {
             f32::INFINITY
         }
     }
 
-    fn get_heuristic_cost(&self, position: IVec3) -> f32 {
-        position.distance_squared(self.block_goal).abs() as f32
+    fn get_heuristic_cost(&self, position: BlockPosition) -> f32 {
+        position.distance_squared(*self.block_goal).abs() as f32
         //let delta = (position - self.goal).abs().as_vec3();
 
         //return delta.x + delta.y + delta.z;
@@ -175,15 +176,15 @@ impl PathFinder {
 
     fn get_potential_successors(
         &self,
-        position: &IVec3,
+        position: &BlockPosition,
         world_map: &WorldMap,
-        successors: &mut Vec<(IVec3, f32, f32)>,
+        successors: &mut Vec<(BlockPosition, f32, f32)>,
     ) {
         let above_cost = Self::get_move_cost(world_map, *position + IVec3::Y);
 
         let max_steps = if above_cost == f32::INFINITY { 0 } else { 1 };
 
-        let get_successor = |offset: IVec3| -> (IVec3, f32, f32) {
+        let get_successor = |offset: IVec3| -> (BlockPosition, f32, f32) {
             let mut position = *position + offset;
 
             let mut move_cost = Self::get_move_cost(world_map, position);
@@ -235,7 +236,7 @@ impl PathFinder {
     fn set_path(
         &mut self,
         mut index: usize,
-        node_map: &IndexMap<IVec3, PathNode>,
+        node_map: &IndexMap<BlockPosition, PathNode>,
         accurate_goal: Option<DVec3>,
     ) {
         let mut xz_offset = DVec3::splat(self.entity_width as f64 * 0.5);

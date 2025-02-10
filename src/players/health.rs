@@ -1,5 +1,6 @@
 use fmc::{
     interfaces::{InterfaceEventRegistration, InterfaceEvents, RegisterInterfaceNode},
+    items::ItemStack,
     networking::{NetworkMessage, Server},
     players::Player,
     prelude::*,
@@ -8,7 +9,9 @@ use fmc::{
 
 use serde::{Deserialize, Serialize};
 
-use super::RespawnEvent;
+use crate::items::DroppedItem;
+
+use super::{Equipment, Inventory, RespawnEvent};
 
 pub struct HealthPlugin;
 impl Plugin for HealthPlugin {
@@ -135,18 +138,26 @@ fn fall_damage(
 }
 
 fn change_health(
+    mut commands: Commands,
     net: Res<Server>,
-    mut health_query: Query<(Entity, &Transform, Mut<Health>)>,
+    mut health_query: Query<(
+        Entity,
+        &Transform,
+        &mut Inventory,
+        Mut<Equipment>,
+        Mut<Health>,
+    )>,
     mut damage_events: EventReader<DamageEvent>,
     mut heal_events: EventReader<HealEvent>,
 ) {
-    for (player_entity, _, health) in health_query.iter() {
+    for (player_entity, _, _, _, health) in health_query.iter() {
         if health.is_added() {
             net.send_one(player_entity, health.build_interface());
         }
     }
     for damage_event in damage_events.read() {
-        let (_, transform, mut health) = health_query.get_mut(damage_event.player_entity).unwrap();
+        let (_, transform, mut inventory, mut equipment, mut health) =
+            health_query.get_mut(damage_event.player_entity).unwrap();
         let interface_update = health.take_damage(damage_event.damage);
 
         net.send_one(damage_event.player_entity, interface_update);
@@ -158,6 +169,23 @@ fn change_health(
         });
 
         if health.hearts == 0 {
+            // Reborrow to enable split borrowing
+            let equipment = equipment.into_inner();
+
+            for item_stack in inventory.iter_mut().chain([
+                &mut equipment.helmet,
+                &mut equipment.chestplate,
+                &mut equipment.leggings,
+                &mut equipment.boots,
+            ]) {
+                if item_stack.is_empty() {
+                    continue;
+                }
+
+                let mut new_item_stack = ItemStack::default();
+                item_stack.swap(&mut new_item_stack);
+                commands.spawn((DroppedItem::new(new_item_stack), transform.clone()));
+            }
             net.send_one(
                 damage_event.player_entity,
                 messages::InterfaceVisibilityUpdate {
@@ -169,7 +197,7 @@ fn change_health(
     }
 
     for heal_event in heal_events.read() {
-        let (_, _, mut health) = health_query.get_mut(heal_event.player_entity).unwrap();
+        let (_, _, _, _, mut health) = health_query.get_mut(heal_event.player_entity).unwrap();
         let interface_update = health.heal(heal_event.healing);
         net.send_one(heal_event.player_entity, interface_update);
     }

@@ -4,33 +4,32 @@ use fmc::{
     bevy::math::DVec3,
     blocks::{BlockConfig, BlockFace, BlockId, BlockPosition, Blocks},
     items::{ItemStack, Items},
-    models::{Model, ModelAnimations, ModelBundle, ModelMap, ModelVisibility, Models},
+    models::{Model, ModelMap, ModelVisibility},
     networking::{NetworkMessage, Server},
-    physics::shapes::Aabb,
+    physics::{shapes::Aabb, Collider},
     players::{Camera, Player, Target, Targets},
     prelude::*,
     protocol::messages,
-    utils::{self, Rng},
-    world::{BlockUpdate, ChunkSubscriptions, WorldMap},
+    utils::Rng,
+    world::{chunk::ChunkPosition, BlockUpdate, ChunkSubscriptions, WorldMap},
 };
 
 use crate::{
-    items::{GroundItemBundle, ItemRegistry, ItemUseSystems, ItemUses},
+    items::{DroppedItem, ItemRegistry, ItemUseSystems, ItemUses},
     players::Inventory,
 };
 
 pub struct HandPlugin;
 impl Plugin for HandPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(BlockBreakingEvents::default())
-            .add_systems(
-                Update,
-                (
-                    handle_left_clicks,
-                    handle_right_clicks.in_set(ItemUseSystems),
-                    break_blocks.after(handle_left_clicks),
-                ),
-            );
+        app.insert_resource(MiningEvents::default()).add_systems(
+            Update,
+            (
+                handle_left_clicks,
+                handle_right_clicks.in_set(ItemUseSystems),
+                break_blocks.after(handle_left_clicks),
+            ),
+        );
     }
 }
 
@@ -53,7 +52,7 @@ impl HandInteractions {
 fn handle_left_clicks(
     mut clicks: EventReader<NetworkMessage<messages::LeftClick>>,
     player_query: Query<(&Targets, &Camera, &GlobalTransform), With<Player>>,
-    mut block_breaking_events: ResMut<BlockBreakingEvents>,
+    mut block_breaking_events: ResMut<MiningEvents>,
 ) {
     for click in clicks.read() {
         let (targets, camera, transform) = player_query.get(click.player_entity).unwrap();
@@ -88,7 +87,7 @@ fn handle_left_clicks(
 }
 
 #[derive(Resource, Deref, DerefMut, Default, Debug)]
-struct BlockBreakingEvents(HashMap<IVec3, (Entity, BlockId, BlockFace, DVec3)>);
+struct MiningEvents(HashMap<BlockPosition, (Entity, BlockId, BlockFace, DVec3)>);
 
 // Keeps the state of how far along a block is to breaking
 #[derive(Debug)]
@@ -107,13 +106,12 @@ fn break_blocks(
     time: Res<Time>,
     net: Res<Server>,
     items: Res<Items>,
-    models: Res<Models>,
     chunk_subscriptions: Res<ChunkSubscriptions>,
     inventory_query: Query<&Inventory, With<Player>>,
     mut model_query: Query<(&mut Model, &mut ModelVisibility), With<BreakingBlockMarker>>,
     mut block_update_writer: EventWriter<BlockUpdate>,
-    mut block_breaking_events: ResMut<BlockBreakingEvents>,
-    mut being_broken: Local<HashMap<IVec3, BreakingBlock>>,
+    mut mining_events: ResMut<MiningEvents>,
+    mut being_broken: Local<HashMap<BlockPosition, BreakingBlock>>,
     mut rng: Local<Rng>,
 ) {
     let now = std::time::Instant::now();
@@ -121,7 +119,7 @@ fn break_blocks(
     let blocks = Blocks::get();
 
     for (block_position, (player_entity, block_id, block_face, hit_position)) in
-        block_breaking_events.drain()
+        mining_events.drain()
     {
         let block_config = blocks.get_config(&block_id);
 
@@ -147,7 +145,7 @@ fn break_blocks(
             }
 
             if breaking_block.particle_timer.finished() {
-                let chunk_position = utils::world_position_to_chunk_position(block_position);
+                let chunk_position = ChunkPosition::from(block_position);
                 if let Some(subscribers) = chunk_subscriptions.get_subscribers(&chunk_position) {
                     if let Some(particle_effect) =
                         hit_particles(block_config, block_face, hit_position)
@@ -215,7 +213,7 @@ fn break_blocks(
             } else if prev_progress < 0.2 && progress > 0.2 {
                 *material_parallax_texture = Some("blocks/breaking_2.png".to_owned());
             } else if prev_progress < 0.1 && progress > 0.1 {
-                visibility.is_visible = true;
+                *visibility = ModelVisibility::Visible;
             }
 
             if progress >= 1.0 {
@@ -229,7 +227,7 @@ fn break_blocks(
 
         // When hardness is zero it will break instantly
         if broken || hardness == 0.0 {
-            let chunk_position = utils::world_position_to_chunk_position(block_position);
+            let chunk_position = ChunkPosition::from(block_position);
             if let Some(subscribers) = chunk_subscriptions.get_subscribers(&chunk_position) {
                 let position = block_position.as_dvec3() + DVec3::splat(0.5);
                 if let Some(particle_effect) = break_particles(block_config, position) {
@@ -266,27 +264,23 @@ fn break_blocks(
                 Some(drop) => drop,
                 None => continue,
             };
-            let item_config = items.get_config(&dropped_item_id);
-            let model_config = models.get_by_id(item_config.model_id);
 
-            commands.spawn(GroundItemBundle::new(
-                dropped_item_id,
-                item_config,
-                model_config,
-                count,
-                block_position.as_dvec3() + DVec3::splat(0.5),
+            let item_config = items.get_config(&dropped_item_id);
+            let item_stack = ItemStack::new(item_config, count);
+
+            commands.spawn((
+                DroppedItem::new(item_stack),
+                Transform::from_translation(block_position.as_dvec3() + DVec3::splat(0.5)),
             ));
         } else {
             let model_entity = commands
-                .spawn(ModelBundle {
-                    model: build_breaking_model(),
-                    animations: ModelAnimations::default(),
+                .spawn((
+                    build_breaking_model(),
                     // The model shouldn't show until some progress has been made
-                    visibility: ModelVisibility { is_visible: false },
-                    global_transform: GlobalTransform::default(),
-                    transform: Transform::from_translation(block_position.as_dvec3()),
-                })
-                .insert(BreakingBlockMarker)
+                    ModelVisibility::Hidden,
+                    Transform::from_translation(block_position.as_dvec3()),
+                    BreakingBlockMarker,
+                ))
                 .id();
 
             let particle_timer = Timer::new(
@@ -331,7 +325,9 @@ fn hit_particles(
         return None;
     };
 
-    let direction = block_face.shift_position(IVec3::ZERO).as_vec3();
+    let direction = block_face
+        .shift_position(BlockPosition::default())
+        .as_vec3();
     let spawn_offset = Vec3::select(direction.cmpeq(Vec3::ZERO), Vec3::splat(0.4), Vec3::ZERO);
 
     const VELOCITY: Vec3 = Vec3::new(2.5, 1.5, 2.5);
@@ -343,7 +339,10 @@ fn hit_particles(
     max_velocity.y = max_velocity.y.max(VELOCITY.y);
 
     // Need to offset so the particle's aabb won't be inside the block
-    let block_face_offset = block_face.shift_position(IVec3::ZERO).as_dvec3() * 0.15;
+    let block_face_offset = block_face
+        .shift_position(BlockPosition::default())
+        .as_dvec3()
+        * 0.15;
 
     Some(messages::ParticleEffect::Explosion {
         position: position + block_face_offset,
@@ -473,6 +472,7 @@ fn build_breaking_model() -> Model {
         material_alpha_mode: 2,
         material_alpha_cutoff: 0.0,
         material_double_sided: false,
+        collider: None,
     }
 }
 
@@ -483,7 +483,7 @@ fn handle_right_clicks(
     item_registry: Res<ItemRegistry>,
     model_map: Res<ModelMap>,
     chunk_subscriptions: Res<ChunkSubscriptions>,
-    model_query: Query<(&Aabb, &GlobalTransform), (With<Model>, Without<BlockPosition>)>,
+    model_query: Query<(&Collider, &GlobalTransform), (With<Model>, Without<BlockPosition>)>,
     mut player_query: Query<(&mut Inventory, &Targets), With<Player>>,
     mut item_use_query: Query<&mut ItemUses>,
     mut hand_interaction_query: Query<&mut HandInteractions>,
@@ -552,19 +552,23 @@ fn handle_right_clicks(
                         let block_config = blocks.get_config(&block_id);
                         let block_state = block_config.placement_rotation(*block_face);
 
-                        let replaced_aabb = Aabb {
+                        let replaced_collider = Collider::Aabb(Aabb {
                             center: replaced_block_position.as_dvec3(),
                             half_extents: DVec3::splat(0.5),
-                        };
+                        });
 
                         // Check that there aren't any entities in the way of the new block
-                        let chunk_position =
-                            utils::world_position_to_chunk_position(replaced_block_position);
+                        let chunk_position = ChunkPosition::from(replaced_block_position);
                         if let Some(entities) = model_map.get_entities(&chunk_position) {
-                            for (aabb, global_transform) in model_query.iter_many(entities) {
-                                let mut aabb = aabb.clone();
-                                aabb.center += global_transform.translation();
-                                if aabb.intersects(&replaced_aabb).is_some() {
+                            for (collider, global_transform) in model_query.iter_many(entities) {
+                                if collider
+                                    .intersection(
+                                        &global_transform.compute_transform(),
+                                        &replaced_collider,
+                                        &Transform::IDENTITY,
+                                    )
+                                    .is_some()
+                                {
                                     continue;
                                 }
                             }
@@ -625,11 +629,11 @@ fn block_placement(
     equipped_item_stack: &ItemStack,
     block_id: BlockId,
     block_face: BlockFace,
-    block_position: IVec3,
+    block_position: BlockPosition,
     items: &Items,
     blocks: &Blocks,
     world_map: &WorldMap,
-) -> Option<(BlockId, IVec3)> {
+) -> Option<(BlockId, BlockPosition)> {
     let against_block = blocks.get_config(&block_id);
 
     if !against_block.is_solid() {

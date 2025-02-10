@@ -3,9 +3,7 @@
     "name": "torch",
     "model": "torch",
     "light": 14,
-    "friction": {
-        "drag": [0.0, 0.0, 0.0]
-    },
+    "drag": [0.90, 0.02, 0.90],
     "hardness": 0,
     "drop": {
         "requires_tool": false,

@@ -1,4 +1,9 @@
-use fmc::{blocks::Blocks, database::Database, prelude::*, world::WorldMap};
+use fmc::{
+    blocks::{BlockPosition, Blocks},
+    database::Database,
+    prelude::*,
+    world::WorldMap,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::settings::Settings;
@@ -81,3 +86,16 @@ pub struct SpawnPoint {
     pub center: IVec3,
     pub radius: i32,
 }
+
+/// Order systems that break blocks before this systemset to avoid 1-frame lag.
+#[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone)]
+pub struct BreakBlocks;
+
+pub struct BreakBlockEvent {
+    position: BlockPosition,
+    particles: bool,
+    drop: bool,
+    sound: bool,
+}
+
+fn break_blocks() {}

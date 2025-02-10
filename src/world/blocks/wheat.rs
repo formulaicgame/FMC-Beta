@@ -95,7 +95,7 @@ fn grow(
         };
 
         block_update_writer.send(BlockUpdate::Change {
-            position: **block_position,
+            position: *block_position,
             block_id,
             block_state: None,
         });

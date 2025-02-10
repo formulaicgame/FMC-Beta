@@ -4,7 +4,7 @@ use std::{
 };
 
 use fmc::{
-    blocks::{BlockFace, BlockId, BlockRotation, BlockState, Blocks},
+    blocks::{BlockFace, BlockId, BlockPosition, BlockRotation, BlockState, Blocks},
     prelude::*,
     world::{BlockUpdate, ChangedBlockEvent},
 };
@@ -550,7 +550,7 @@ fn spread_water(
     mut update_timer: ResMut<WaterUpdateTimer>,
     mut changed_blocks: EventReader<ChangedBlockEvent>,
     mut block_updates: EventWriter<BlockUpdate>,
-    mut updates: Local<HashMap<IVec3, WaterBlock>>,
+    mut updates: Local<HashMap<BlockPosition, WaterBlock>>,
 ) {
     let blocks = Blocks::get();
     let air = blocks.get_id("air");

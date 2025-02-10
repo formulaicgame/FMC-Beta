@@ -2,13 +2,13 @@ use std::collections::HashSet;
 
 use fmc::{
     bevy::math::DVec3,
-    blocks::Blocks,
+    blocks::{BlockPosition, Blocks},
     items::Items,
-    models::{Model, ModelAnimations, ModelBundle, ModelVisibility, Models},
-    physics::{Acceleration, Buoyancy, PhysicsBundle, Velocity},
+    models::{Model, ModelAnimations, Models},
+    physics::{Buoyancy, Collider, Physics},
     players::Player,
     prelude::*,
-    world::WorldMap,
+    world::{chunk::ChunkPosition, WorldMap},
 };
 use rand::Rng;
 
@@ -50,7 +50,7 @@ fn spawn_duck(
     if time.elapsed_secs() < 1.0 || duck.iter().count() == 1 {
         return;
     }
-    if !world_map.contains_chunk(&IVec3::new(-16, 0, 0)) {
+    if !world_map.contains_chunk(&ChunkPosition::new(-16, 0, 0)) {
         return;
     }
     let duck_model = models.get_by_name("duck");
@@ -60,20 +60,16 @@ fn spawn_duck(
 
     commands.spawn((
         Duck::default(),
-        PhysicsBundle {
-            aabb: duck_model.aabb.clone(),
+        Model::Asset(duck_model.id),
+        animations,
+        Transform::from_xyz(-30.0, 2.0, -1.0),
+        Collider::Aabb(duck_model.aabb.clone()),
+        Physics {
+            buoyancy: Some(Buoyancy {
+                density: 0.3,
+                waterline: 0.4,
+            }),
             ..default()
-        },
-        Buoyancy {
-            density: 0.3,
-            waterline: 0.4,
-        },
-        ModelBundle {
-            model: Model::Asset(duck_model.id),
-            animations,
-            visibility: ModelVisibility::default(),
-            transform: Transform::from_xyz(-30.0, 2.0, -1.0),
-            global_transform: GlobalTransform::default(),
         },
         PathFinder::new(1, 1),
         HandInteractions::default(),
@@ -157,7 +153,7 @@ fn wander(
         let blocks = Blocks::get();
         let water_id = blocks.get_id("surface_water");
 
-        let start = transform.translation().floor().as_ivec3();
+        let start = BlockPosition::from(transform.translation());
         potential_blocks.push((start, u32::MIN, 0));
         already_visited.insert(start);
 
@@ -260,19 +256,14 @@ const WALK_ACCELERATION: f64 = 30.0;
 
 fn move_to_pathfinding_goal(
     mut ducks: Query<
-        (
-            &mut PathFinder,
-            &mut Acceleration,
-            &mut Velocity,
-            &mut Transform,
-        ),
+        (&mut PathFinder, &mut Physics, &mut Transform),
         (
             With<Duck>,
             Or<(Changed<GlobalTransform>, Changed<PathFinder>)>,
         ),
     >,
 ) {
-    for (mut path_finder, mut acceleration, mut velocity, mut transform) in ducks.iter_mut() {
+    for (mut path_finder, mut physics, mut transform) in ducks.iter_mut() {
         if let Some(next_position) = path_finder.next_node(transform.translation) {
             // Only rotate around the Y-axis
             transform.look_at(next_position, DVec3::Y);
@@ -284,15 +275,15 @@ fn move_to_pathfinding_goal(
 
             // TODO: Should not jump out of water, accelerate only so it looks more like a step up.
             if direction.y > 0.1 {
-                if velocity.y < 0.1 {
-                    velocity.y += JUMP_VELOCITY;
+                if physics.velocity.y < 0.1 {
+                    physics.velocity.y += JUMP_VELOCITY;
                 }
-                acceleration.x += direction.x * WALK_ACCELERATION;
-                acceleration.z += direction.z * WALK_ACCELERATION;
-            } else if acceleration.y.abs() < 0.2 {
+                physics.acceleration.x += direction.x * WALK_ACCELERATION;
+                physics.acceleration.z += direction.z * WALK_ACCELERATION;
+            } else if physics.acceleration.y.abs() < 0.2 {
                 // TODO: Needs states for when grounded/swimming/falling and differing speeds.
-                acceleration.x += direction.x * WALK_ACCELERATION;
-                acceleration.z += direction.z * WALK_ACCELERATION;
+                physics.acceleration.x += direction.x * WALK_ACCELERATION;
+                physics.acceleration.z += direction.z * WALK_ACCELERATION;
             }
         }
     }

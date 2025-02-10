@@ -18,12 +18,14 @@ impl Plugin for ExtractBundledAssetsPlugin {
         // unpack all the server assets into the mod's assets directory.
         //
         // Always overwrite when developing so assets are replaced when they are edited.
-        let is_cargo = std::env::var_os("CARGO").is_some();
+        if std::env::var_os("CARGO").is_some() {
+            std::fs::remove_dir_all("assets").ok();
+        };
 
         for entry in archive.entries().unwrap() {
             let mut file = entry.unwrap();
             let path = file.path().unwrap();
-            if !path.exists() || is_cargo {
+            if !path.exists() {
                 match file.unpack_in(".") {
                     Err(e) => panic!("Failed to extract default assets.\nError: {e}"),
                     _ => (),

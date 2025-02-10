@@ -1,17 +1,16 @@
 use fmc::{
     bevy::math::DVec3,
     blocks::{BlockId, Blocks},
-    items::Items,
-    models::Models,
+    items::{Item, ItemStack, Items},
     networking::Server,
     players::{Player, Target, Targets},
     prelude::*,
     protocol::messages,
-    utils::{self, Rng},
-    world::{BlockUpdate, ChunkSubscriptions},
+    utils::Rng,
+    world::{chunk::ChunkPosition, BlockUpdate, ChunkSubscriptions},
 };
 
-use super::{GroundItemBundle, ItemRegistry, ItemUses};
+use super::{DroppedItem, ItemRegistry, ItemUses};
 
 pub struct HoePlugin;
 impl Plugin for HoePlugin {
@@ -51,7 +50,6 @@ fn use_hoe(
     mut commands: Commands,
     net: Res<Server>,
     items: Res<Items>,
-    models: Res<Models>,
     chunk_subscriptions: Res<ChunkSubscriptions>,
     player_query: Query<&Targets, With<Player>>,
     mut hoe_uses: Query<(&mut ItemUses, &HoeConfig), Changed<ItemUses>>,
@@ -76,15 +74,11 @@ fn use_hoe(
         };
 
         if *block_id == config.grass {
-            let item_id = items.get_id("wheat_seeds").unwrap();
-            let item_config = items.get_config(&item_id);
-
-            commands.spawn(GroundItemBundle::new(
-                item_id,
-                item_config,
-                models.get_by_id(item_config.model_id),
-                1,
-                block_position.as_dvec3() + DVec3::new(0.5, 1.1, 0.5),
+            let item_config = items.get_config_by_name("wheat_seeds").unwrap();
+            let item_stack = ItemStack::new(item_config, 1);
+            commands.spawn((
+                DroppedItem::new(item_stack),
+                Transform::from_translation(block_position.as_dvec3() + DVec3::new(0.5, 1.1, 0.5)),
             ));
         }
 
@@ -92,7 +86,7 @@ fn use_hoe(
         let soil_id = blocks.get_id("soil");
         let block_config = blocks.get_config(&soil_id);
 
-        let chunk_position = utils::world_position_to_chunk_position(*block_position);
+        let chunk_position = ChunkPosition::from(*block_position);
         if let Some(subscribers) = chunk_subscriptions.get_subscribers(&chunk_position) {
             let position = block_position.as_dvec3() + DVec3::splat(0.5);
 

@@ -3,19 +3,19 @@ use std::collections::HashMap;
 use fmc::{items::ItemId, prelude::*};
 
 pub mod crafting;
-mod ground_items;
+mod dropped_items;
 
 mod bread;
 mod hoes;
 mod seeds;
 
-pub use ground_items::GroundItemBundle;
+pub use dropped_items::DroppedItem;
 
 pub struct ItemPlugin;
 impl Plugin for ItemPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(ItemRegistry::default())
-            .add_plugins(ground_items::GroundItemPlugin)
+            .add_plugins(dropped_items::DroppedItemsPlugin)
             .add_plugins(crafting::CraftingPlugin)
             .add_plugins(hoes::HoePlugin)
             .add_plugins(bread::BreadPlugin)

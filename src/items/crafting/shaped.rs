@@ -1,4 +1,4 @@
-use fmc::items::{Item, ItemId, ItemStack};
+use fmc::items::{ItemId, ItemStack};
 
 #[derive(Hash, PartialEq, Eq)]
 pub struct Pattern {
@@ -69,24 +69,25 @@ impl From<&[ItemStack]> for Pattern {
 }
 
 /// A recipe is counterpart to a `Pattern` and holds how many of each item in the pattern is needed
-/// to create the `Item`.
+/// to create the recipe output.
 pub struct Recipe {
     pub(super) required_amount: Vec<Vec<u32>>,
-    pub(super) output_item: Item,
-    pub(super) output_amount: u32,
-    pub(super) data: serde_json::Value,
+    pub(super) output: ItemStack,
 }
 
 // XXX: The functions that are pub(super) require that the 'input' parameter matches the recipe
 // pattern. They can therefore not be used independently and are always used through the
 // super::RecipeCollection struct which checks beforehand.
 impl Recipe {
-    pub(super) fn craft(&self, input: &mut [ItemStack], mut amount: u32) -> Option<(Item, u32)> {
-        // The given amount is the amount of items requested j
+    pub(super) fn craft(&self, input: &mut [ItemStack], mut amount: u32) -> Option<ItemStack> {
         amount = std::cmp::min(
-            amount / self.output_amount,
-            self.get_craftable_amount(input) / self.output_amount,
+            amount / self.output.size(),
+            self.get_craftable_amount(input) / self.output.size(),
         );
+
+        if amount == 0 {
+            return None;
+        }
 
         input
             .iter_mut()
@@ -96,7 +97,9 @@ impl Recipe {
                 item_stack.take(required * amount);
             });
 
-        return Some((self.output_item.clone(), amount * self.output_amount));
+        let output = self.output.clone().set_size(amount * self.output.size());
+
+        return Some(output);
     }
 
     /// Get how many of the crafting output it is possible to make.
@@ -111,25 +114,21 @@ impl Recipe {
             .iter()
             .filter(|&x| !x.is_empty())
             .zip(self.required_amount.iter().flatten().filter(|&x| *x > 0))
-            .for_each(|(item, required)| {
-                let can_craft = item.size() / required;
+            .for_each(|(item_stack, required)| {
+                let can_craft = item_stack.size() / required;
                 if can_craft < amount_can_craft {
                     amount_can_craft = can_craft;
                 }
             });
 
         if amount_can_craft < u32::MAX {
-            return amount_can_craft * self.output_amount;
+            return amount_can_craft * self.output.size();
         } else {
             return 0;
         }
     }
 
-    pub fn output_item(&self) -> &Item {
-        return &self.output_item;
-    }
-
-    pub fn data(&self) -> &serde_json::Value {
-        return &self.data;
+    pub fn output(&self) -> &ItemStack {
+        return &self.output;
     }
 }

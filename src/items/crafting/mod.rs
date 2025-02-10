@@ -1,5 +1,5 @@
 use fmc::{
-    items::{Item, ItemId, ItemStack, Items},
+    items::{ItemId, ItemStack, Items},
     prelude::*,
 };
 use serde::{Deserialize, Serialize};
@@ -84,7 +84,7 @@ fn load_recipes(mut commands: Commands, items: Res<Items>) {
                             ),
                         };
 
-                    let output_item = match items.get_id(&recipe_json.output_item) {
+                    let output_config = match items.get_config_by_name(&recipe_json.output_item) {
                         Some(id) => id,
                         None => panic!(
                             "Error parsing item recipe pattern at: {}\n Item name '{}'\
@@ -96,12 +96,7 @@ fn load_recipes(mut commands: Commands, items: Res<Items>) {
 
                     let recipe = shaped::Recipe {
                         required_amount,
-                        output_item: Item {
-                            id: output_item,
-                            properties: serde_json::Value::default(),
-                        },
-                        output_amount: recipe_json.output_amount,
-                        data: recipe_json.data,
+                        output: ItemStack::new(output_config, recipe_json.output_amount),
                     };
 
                     recipes
@@ -141,8 +136,6 @@ struct RecipeJson {
     pattern: PatternJson,
     output_item: String,
     output_amount: u32,
-    #[serde(default)]
-    data: serde_json::Value,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -176,7 +169,7 @@ impl Recipe {
     /// Craft items by consuming the input. Will produce ('amount' * the recipe amount) items
     /// (or as many as possible if amount is more than is possible).
     /// DOES NOT TEST THAT THE INPUT MATCHES
-    pub fn craft(&self, input: &mut CraftingGrid, amount: u32) -> Option<(Item, u32)> {
+    pub fn craft(&self, input: &mut CraftingGrid, amount: u32) -> Option<ItemStack> {
         return match self {
             Recipe::Shaped(r) => r.craft(input, amount),
         };
@@ -189,25 +182,10 @@ impl Recipe {
         };
     }
 
-    /// The item that can be crafted through the recipe.
-    pub fn output_item(&self) -> &Item {
+    pub fn output(&self) -> &ItemStack {
         match self {
-            Recipe::Shaped(s) => s.output_item(),
+            Recipe::Shaped(s) => s.output(),
         }
-    }
-
-    /// The amount of items that can be created from the recipe
-    fn output_amount(&self) -> u32 {
-        match self {
-            Recipe::Shaped(s) => s.output_amount,
-        }
-    }
-
-    // TODO: Idk what this was for
-    pub fn data(&self) -> &serde_json::Value {
-        return match self {
-            Recipe::Shaped(s) => s.data(),
-        };
     }
 }
 
@@ -237,7 +215,7 @@ impl RecipeCollection {
         }
     }
 
-    pub fn craft(&self, input: &mut CraftingGrid, amount: u32) -> Option<(Item, u32)> {
+    pub fn craft(&self, input: &mut CraftingGrid, amount: u32) -> Option<ItemStack> {
         if self.shaped {
             let pattern = Pattern::Shaped(shaped::Pattern::from(input.as_slice()));
             let Some(recipe) = self.recipes.get(&pattern) else {
@@ -264,11 +242,11 @@ impl RecipeCollection {
                 return None;
             }
 
-            let item_stack = ItemStack::new(
-                recipe.output_item().clone(),
-                max_craft,
-                recipe.output_amount(),
-            );
+            let item_stack = recipe
+                .output()
+                .clone()
+                .set_size(max_craft)
+                .set_capacity(recipe.output().size());
 
             return Some(item_stack);
         } else {

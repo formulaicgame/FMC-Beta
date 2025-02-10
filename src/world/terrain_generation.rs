@@ -3,7 +3,10 @@ use fmc::{
     noise::{Frequency, Noise},
     // noise::Noise,
     prelude::*,
-    world::{chunk::Chunk, Surface, TerrainGenerator},
+    world::{
+        chunk::{Chunk, ChunkPosition},
+        Surface, TerrainGenerator,
+    },
 };
 
 use rand::SeedableRng;
@@ -20,7 +23,7 @@ pub struct Earth {
 }
 
 impl TerrainGenerator for Earth {
-    fn generate_chunk(&self, chunk_position: IVec3) -> Chunk {
+    fn generate_chunk(&self, chunk_position: ChunkPosition) -> Chunk {
         let mut chunk = Chunk::default();
 
         let air = Blocks::get().get_id("air");
@@ -186,7 +189,7 @@ impl Earth {
         }
     }
 
-    fn generate_terrain(&self, chunk_position: IVec3, chunk: &mut Chunk) {
+    fn generate_terrain(&self, chunk_position: ChunkPosition, chunk: &mut Chunk) {
         const WIDTH_FACTOR: usize = 4;
         const HEIGHT_FACTOR: usize = 8;
         const INTERPOLATION_WIDTH: usize = Chunk::SIZE / WIDTH_FACTOR + 1;
@@ -346,7 +349,7 @@ impl Earth {
             });
     }
 
-    fn generate_features(&self, chunk_position: IVec3, chunk: &mut Chunk) {
+    fn generate_features(&self, chunk_position: ChunkPosition, chunk: &mut Chunk) {
         let air = Blocks::get().get_id("air");
         let surface = Surface::new(chunk, air);
 
@@ -361,7 +364,7 @@ impl Earth {
         let biome = self.biomes.get_biome();
 
         for blueprint in biome.blueprints.iter() {
-            blueprint.construct(chunk_position, chunk, &surface, &mut rng);
+            blueprint.construct(chunk_position.into(), chunk, &surface, &mut rng);
         }
     }
 }

@@ -2,9 +2,7 @@
     "type": "cube",
     "name": "air",
     "material": "transparent",
-    "friction": {
-        "drag": [0.90, 0.02, 0.90]
-    },
+    "drag": [0.90, 0.02, 0.90],
     "cull": false,
     "light_attenuation": 0,
     "replaceable": true,

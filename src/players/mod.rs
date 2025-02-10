@@ -1,16 +1,19 @@
 use fmc::{
     bevy::math::{DQuat, DVec3},
-    blocks::Blocks,
+    blocks::{BlockPosition, Blocks},
     database::Database,
     items::ItemStack,
-    models::{Model, ModelAnimations, ModelBundle, ModelVisibility, Models},
+    models::{Model, ModelAnimations, ModelVisibility, Models},
     networking::{NetworkEvent, NetworkMessage, Server},
-    physics::shapes::Aabb,
+    physics::{shapes::Aabb, Collider},
     players::{Camera, Player},
     prelude::*,
     protocol::messages,
     utils,
-    world::{chunk::Chunk, WorldMap},
+    world::{
+        chunk::{Chunk, ChunkPosition},
+        WorldMap,
+    },
 };
 use serde::{Deserialize, Serialize};
 
@@ -97,7 +100,7 @@ pub struct Equipment {
 pub struct PlayerBundle {
     transform: Transform,
     camera: Camera,
-    aabb: Aabb,
+    aabb: Collider,
     inventory: Inventory,
     equipment: Equipment,
     crafting_table: CraftingGrid,
@@ -110,7 +113,7 @@ impl Default for PlayerBundle {
         Self {
             transform: Transform::default(),
             camera: Camera::default(),
-            aabb: Aabb::from_min_max(DVec3::new(-0.3, 0.0, -0.3), DVec3::new(0.3, 1.8, 0.3)),
+            aabb: Collider::from_min_max(DVec3::new(-0.3, 0.0, -0.3), DVec3::new(0.3, 1.8, 0.3)),
             inventory: Inventory::default(),
             equipment: Equipment::default(),
             crafting_table: CraftingGrid::with_size(4),
@@ -227,17 +230,14 @@ fn add_players(
             .entity(player_entity)
             .insert(bundle)
             .with_children(|parent| {
-                parent.spawn(ModelBundle {
-                    model: Model::Asset(models.get_by_name("player").id),
-                    animations: ModelAnimations::default(),
-                    visibility: ModelVisibility::default(),
-                    global_transform: GlobalTransform::default(),
-                    transform: Transform {
+                parent.spawn((
+                    Model::Asset(models.get_by_name("player").id),
+                    Transform {
                         //translation: player_bundle.camera.translation - player_bundle.camera.translation.y,
                         translation: DVec3::Z * 0.3 + DVec3::X * 0.3,
                         ..default()
                     },
-                });
+                ));
             });
     }
 }
@@ -300,8 +300,7 @@ fn respawn_players(
         let blocks = Blocks::get();
         let air = blocks.get_id("air");
 
-        let mut chunk_position =
-            utils::world_position_to_chunk_position(world_properties.spawn_point.center);
+        let mut chunk_position = ChunkPosition::from(world_properties.spawn_point.center);
         let spawn_position = 'outer: loop {
             let chunk = futures_lite::future::block_on(Chunk::load(
                 chunk_position,
@@ -311,7 +310,7 @@ fn respawn_players(
             .1;
 
             if chunk.is_uniform() && chunk[0] == air {
-                break chunk_position;
+                break BlockPosition::from(chunk_position);
             }
 
             // Find two consecutive air blocks to spawn in
@@ -321,8 +320,8 @@ fn respawn_players(
                     if count == 0 && *block == air {
                         count += 1;
                     } else if count == 1 && *block == air {
-                        let mut spawn_position =
-                            chunk_position + utils::block_index_to_position(i * Chunk::SIZE + j);
+                        let mut spawn_position = BlockPosition::from(chunk_position)
+                            + BlockPosition::from(i * Chunk::SIZE + j);
                         spawn_position.y -= 1;
                         break 'outer spawn_position;
                     } else {
