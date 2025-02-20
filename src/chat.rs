@@ -5,6 +5,7 @@ use crate::{
         prelude::*,
         protocol::messages,
     },
+    players::GameMode,
     skybox::Clock,
 };
 
@@ -20,20 +21,21 @@ impl Plugin for ChatPlugin {
 
 fn handle_chat_messages(
     net: Res<Server>,
-    player_query: Query<&Player>,
-    mut chat_message_query: EventReader<NetworkMessage<messages::InterfaceTextInput>>,
+    mut player_query: Query<(&Player, &mut GameMode)>,
     mut clock: ResMut<Clock>,
+    mut chat_message_query: EventReader<NetworkMessage<messages::InterfaceTextInput>>,
 ) {
     for chat_message in chat_message_query.read() {
         if &chat_message.interface_path != "chat/input" {
             continue;
         }
 
-        let Ok(player) = player_query.get(chat_message.player_entity) else {
+        let Ok((player, mut game_mode)) = player_query.get_mut(chat_message.player_entity) else {
             // TODO: Should probably disconnect
             continue;
         };
 
+        // TODO: All commands are handled here until a proper system is figured out
         if chat_message.text.starts_with("/") {
             if let Some(time) = chat_message.text.strip_prefix("/time ") {
                 match time {
@@ -41,6 +43,12 @@ fn handle_chat_messages(
                     "midnight" => clock.set_midnight(),
                     "sunrise" => clock.set_sunrise(),
                     "sunset" => clock.set_sunset(),
+                    _ => (),
+                }
+            } else if let Some(mode) = chat_message.text.strip_prefix("/gamemode ") {
+                match mode {
+                    "0" => *game_mode = GameMode::Survival,
+                    "1" => *game_mode = GameMode::Creative,
                     _ => (),
                 }
             }

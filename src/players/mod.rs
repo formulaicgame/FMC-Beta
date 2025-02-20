@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use fmc::{
     bevy::math::{DQuat, DVec3},
     blocks::{BlockPosition, Blocks},
@@ -37,6 +39,7 @@ impl Plugin for PlayerPlugin {
             .add_systems(
                 Update,
                 (
+                    on_gamemode_update,
                     (add_players, apply_deferred).chain(),
                     respawn_players,
                     rotate_player_model,
@@ -48,13 +51,13 @@ impl Plugin for PlayerPlugin {
     }
 }
 
-#[derive(Component)]
-enum GameMode {
+#[derive(Component, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+pub enum GameMode {
     Survival,
     Creative,
 }
 
-#[derive(Component, Serialize, Deserialize, Deref, DerefMut)]
+#[derive(Component, Serialize, Deserialize, Deref, DerefMut, Clone)]
 pub struct Inventory {
     #[deref]
     inventory: Vec<ItemStack>,
@@ -86,7 +89,7 @@ impl Inventory {
 }
 
 // TODO: Move this into Inventory, no clue why I separated them
-#[derive(Component, Default, Serialize, Deserialize)]
+#[derive(Component, Default, Serialize, Deserialize, Clone)]
 pub struct Equipment {
     helmet: ItemStack,
     chestplate: ItemStack,
@@ -134,6 +137,7 @@ impl From<PlayerSave> for PlayerBundle {
             inventory: save.inventory,
             equipment: save.equipment,
             health_bundle: HealthBundle::from_health(save.health),
+            gamemode: save.game_mode,
             ..default()
         }
     }
@@ -150,6 +154,7 @@ pub struct PlayerSave {
     inventory: Inventory,
     equipment: Equipment,
     health: Health,
+    game_mode: GameMode,
 }
 
 impl PlayerSave {
@@ -207,7 +212,6 @@ fn add_players(
             player_entity,
             messages::PlayerPosition {
                 position: bundle.transform.translation,
-                velocity: DVec3::ZERO,
             },
         );
 
@@ -248,9 +252,10 @@ fn save_player_data(
         &Player,
         &Transform,
         &Camera,
-        &mut Inventory,
-        &mut Equipment,
+        &Inventory,
+        &Equipment,
         &Health,
+        &GameMode,
     )>,
 ) {
     for network_event in network_events.read() {
@@ -258,7 +263,7 @@ fn save_player_data(
             continue;
         };
 
-        let Ok((player, transform, camera, mut inventory, mut equipment, health)) =
+        let Ok((player, transform, camera, inventory, equipment, health, game_mode)) =
             players.get_mut(*entity)
         else {
             continue;
@@ -268,10 +273,10 @@ fn save_player_data(
             position: transform.translation,
             camera_position: camera.translation,
             camera_rotation: camera.rotation,
-            // Since ItemStack is not Clone we replace with new ones.
-            inventory: std::mem::replace(&mut inventory, Inventory::default()),
-            equipment: std::mem::replace(&mut equipment, Equipment::default()),
+            inventory: inventory.clone(),
+            equipment: equipment.clone(),
             health: health.clone(),
+            game_mode: *game_mode,
         }
         .save(&player.username, &database);
     }
@@ -351,7 +356,6 @@ fn respawn_players(
             respawn_event.player_entity,
             messages::PlayerPosition {
                 position: spawn_position,
-                velocity: DVec3::ZERO,
             },
         );
     }
@@ -372,5 +376,43 @@ fn rotate_player_model(
 
         let theta = rotation.y.atan2(rotation.w);
         transform.rotation = DQuat::from_xyzw(0.0, theta.sin(), 0.0, theta.cos());
+    }
+}
+
+fn on_gamemode_update(
+    net: Res<Server>,
+    player_query: Query<(Entity, &GameMode), Changed<GameMode>>,
+    mut current_movement_function: Local<HashMap<Entity, Option<String>>>,
+) {
+    for (player_entity, gamemode) in player_query.iter() {
+        let current_movement_function = current_movement_function.entry(player_entity).or_default();
+        if let Some(name) = current_movement_function.take() {
+            net.send_one(player_entity, messages::Plugin::Disable(name));
+        }
+
+        match gamemode {
+            GameMode::Creative => {
+                let mut health_visibility = messages::InterfaceNodeVisibilityUpdate::default();
+                health_visibility.set_hidden("health".to_owned());
+                net.send_one(player_entity, health_visibility);
+
+                net.send_one(
+                    player_entity,
+                    messages::Plugin::Enable("creative".to_owned()),
+                );
+                *current_movement_function = Some("creative".to_owned());
+            }
+            GameMode::Survival => {
+                let mut health_visibility = messages::InterfaceNodeVisibilityUpdate::default();
+                health_visibility.set_visible("health".to_owned());
+                net.send_one(player_entity, health_visibility);
+
+                net.send_one(
+                    player_entity,
+                    messages::Plugin::Enable("movement".to_owned()),
+                );
+                *current_movement_function = Some("movement".to_owned());
+            }
+        }
     }
 }

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use fmc::{
     bevy::math::DVec3,
     interfaces::{InterfaceEventRegistration, InterfaceEvents, RegisterInterfaceNode},
@@ -14,7 +16,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::items::DroppedItem;
 
-use super::{Equipment, Inventory, RespawnEvent};
+use super::{Equipment, GameMode, Inventory, RespawnEvent};
 
 pub struct HealthPlugin;
 impl Plugin for HealthPlugin {
@@ -107,9 +109,6 @@ impl Health {
     }
 }
 
-#[derive(Component, Default)]
-struct FallDamage(u32);
-
 #[derive(Event)]
 pub struct DamageEvent {
     pub player_entity: Entity,
@@ -122,25 +121,63 @@ pub struct HealEvent {
     pub healing: u32,
 }
 
+#[derive(Component)]
+struct FallDamage {
+    hearts: u32,
+    last_position: DVec3,
+    last_update: std::time::Instant,
+}
+
+impl Default for FallDamage {
+    fn default() -> Self {
+        Self {
+            hearts: 0,
+            // Start at the bottom so it doesn't trigger accidentally
+            last_position: DVec3::MIN,
+            last_update: std::time::Instant::now(),
+        }
+    }
+}
+
 fn fall_damage(
-    mut fall_damage_query: Query<(Entity, &mut FallDamage), With<Player>>,
+    mut fall_damage_query: Query<(&mut FallDamage, &GameMode), With<Player>>,
     mut position_events: EventReader<NetworkMessage<messages::PlayerPosition>>,
     mut damage_events: EventWriter<DamageEvent>,
 ) {
     for position_update in position_events.read() {
-        let (entity, mut fall_damage) = fall_damage_query
+        let (mut fall_damage, game_mode) = fall_damage_query
             .get_mut(position_update.player_entity)
             .unwrap();
 
-        if fall_damage.0 != 0 && position_update.velocity.y > -0.1 {
-            damage_events.send(DamageEvent {
-                player_entity: entity,
-                damage: fall_damage.0,
-            });
-            fall_damage.0 = 0;
-        } else if position_update.velocity.y < 0.0 {
-            fall_damage.0 = (position_update.velocity.y.abs() as u32).saturating_sub(20);
+        if *game_mode != GameMode::Survival {
+            continue;
         }
+
+        let now = std::time::Instant::now();
+        // TODO: The velocity is not stable when falling? Varies greatly from values of -8 to -3
+        // to -20 where it should be either strictly increasing or decreasing
+        // This will sometimes cause fall damage to be negated.
+        let velocity = (position_update.position.y - fall_damage.last_position.y)
+            / now.duration_since(fall_damage.last_update).as_secs_f64();
+        if velocity > -0.1 {
+            if fall_damage.hearts.saturating_sub(3) != 0 {
+                damage_events.send(DamageEvent {
+                    player_entity: position_update.player_entity,
+                    damage: fall_damage.hearts - 3,
+                });
+            }
+            fall_damage.hearts = 0;
+        } else if velocity > -3.5 {
+            // If you move slowly downwards you should take no damage
+            fall_damage.hearts = 0;
+        } else {
+            let blocks_fallen =
+                (fall_damage.last_position.floor() - position_update.position.y.floor()).y;
+            fall_damage.hearts += blocks_fallen.max(0.0) as u32;
+        }
+
+        fall_damage.last_position = position_update.position;
+        fall_damage.last_update = now;
     }
 }
 
