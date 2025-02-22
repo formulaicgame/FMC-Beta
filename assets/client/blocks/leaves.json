@@ -1,0 +1,40 @@
+{
+    "parent": "default_block.json",
+    "name": "leaves",
+    "material": "leaves",
+    "faces": {
+        "top": "leaves.png",
+        "bottom": "leaves.png",
+        "left": "leaves.png",
+        "right": "leaves.png",
+        "front": "leaves.png",
+        "back": "leaves.png"
+    },
+    "light_attenuation": 1,
+    "sound": {
+        "place": [
+            "grass_1.ogg",
+            "grass_2.ogg",
+            "grass_3.ogg",
+            "grass_4.ogg"
+        ],
+        "step": [
+            "grass_1.ogg",
+            "grass_2.ogg",
+            "grass_3.ogg",
+            "grass_4.ogg"
+        ],
+        "hit": [
+            "grass_1.ogg",
+            "grass_2.ogg",
+            "grass_3.ogg",
+            "grass_4.ogg"
+        ],
+        "destroy": [
+            "grass_1.ogg",
+            "grass_2.ogg",
+            "grass_3.ogg",
+            "grass_4.ogg"
+        ]
+    }
+}

@@ -1,0 +1,12 @@
+{
+    "type": "block",
+    "base_color": {
+        "red": 0,
+        "green": 0,
+        "blue": 1,
+        "alpha": 1
+    },
+    "double_sided": true,
+    "transparency": "blend",
+    "animation_frames": 32
+}

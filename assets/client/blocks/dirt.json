@@ -1,0 +1,39 @@
+{
+    "parent": "default_block.json",
+    "name": "dirt",
+    "faces": {
+        "top": "dirt.png",
+        "bottom": "dirt.png",
+        "left": "dirt.png",
+        "right": "dirt.png",
+        "front": "dirt.png",
+        "back": "dirt.png"
+    },
+    "tools": ["shovel"],
+    "drop": {
+        "requires_tool": false,
+        "drop": "dirt"
+    },
+    "sound": {
+        "place": [
+            "gravel_1.ogg",
+            "gravel_2.ogg",
+            "gravel_3.ogg"
+        ],
+        "step": [
+            "gravel_1.ogg",
+            "gravel_2.ogg",
+            "gravel_3.ogg"
+        ],
+        "hit": [
+            "gravel_1.ogg",
+            "gravel_2.ogg",
+            "gravel_3.ogg"
+        ],
+        "destroy": [
+            "gravel_1.ogg",
+            "gravel_2.ogg",
+            "gravel_3.ogg"
+        ]
+    }
+}

@@ -1,0 +1,55 @@
+{
+  "style": {
+    "justify_content": "Center",
+    "width": {
+      "Percent": 100.0
+    },
+    "height": {
+      "Percent": 100.0
+    }
+  },
+  "content": {
+    "Nodes": [
+      {
+        "style": {
+          "flex_direction": "Column",
+          "align_self": "Start",
+          "justify_content": "End",
+          "width": {
+            "Px": 172
+          },
+          "height": {
+            "Percent": 100.0
+          }
+        },
+        "content": {
+          "Nodes": [
+            {
+              "path": "hotbar",
+              "image": "hotbar.png",
+              "style": {
+                "padding": {
+                  "left": {
+                    "Px": 3
+                  },
+                  "top": {
+                    "Px": 2
+                  }
+                },
+                "column_gap": {
+                  "Px": 5
+                }
+              },
+              "content": {
+                "Items": {
+                  "equipment": true,
+                  "movable_items": false
+                }
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

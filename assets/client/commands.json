@@ -1,0 +1,6 @@
+[
+    {
+        "command": "/interface chat",
+        "key_binding": "t"
+    }
+]

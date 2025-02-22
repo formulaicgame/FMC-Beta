@@ -1,0 +1,44 @@
+{
+    "parent": "default_block.json",
+    "name": "stone",
+    "faces": {
+        "top": "stone.png",
+        "bottom": "stone.png",
+        "left": "stone.png",
+        "right": "stone.png",
+        "front": "stone.png",
+        "back": "stone.png"
+    },
+    "tools": ["pickaxe"],
+    "hardness": 6,
+    "drop": {
+        "requires_tool": true,
+        "drop": "stone"
+    },
+    "sound": {
+        "place": [
+            "stone_1.ogg",
+            "stone_2.ogg",
+            "stone_3.ogg",
+            "stone_4.ogg"
+        ],
+        "step": [
+            "stone_1.ogg",
+            "stone_2.ogg",
+            "stone_3.ogg",
+            "stone_4.ogg"
+        ],
+        "hit": [
+            "stone_1.ogg",
+            "stone_2.ogg",
+            "stone_3.ogg",
+            "stone_4.ogg"
+        ],
+        "destroy": [
+            "stone_1.ogg",
+            "stone_2.ogg",
+            "stone_3.ogg",
+            "stone_4.ogg"
+        ]
+    }
+}

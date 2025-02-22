@@ -1,0 +1,10 @@
+{
+    "block": {
+        "top": "sand.png",
+        "bottom": "sand.png",
+        "left": "sand.png",
+        "right": "sand.png",
+        "front": "sand.png",
+        "back": "sand.png"
+    }
+}

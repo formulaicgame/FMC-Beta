@@ -1,0 +1,41 @@
+[package]
+name = "fmc_vanilla"
+version = "0.0.1"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/formulaicgame/FMC-Vanilla"
+description = "Bare-bones implementation of an fmc server"
+
+[dependencies]
+fmc = { version = "0.0.3", git = "https://github.com/formulaicgame/fmc" }
+#fmc = { version = "0.0.3", path = "../fmc/fmc"}
+
+serde = { version = "1.0.188", features = ["derive"] }
+serde_json = "1.0.128"
+rand = "0.8.5"
+futures-lite = "1.13.0"
+rusqlite = { version = "0.31.0", features = ["bundled"]}
+bincode = "1.3.3"
+indexmap = "2.2.6"
+tar = "0.4.40"
+zstd = "0.13.2"
+
+[build-dependencies]
+cargo_metadata = "0.19.1"
+toml = "0.8.19"
+tar = "0.4.40"
+zstd = "0.13.2"
+
+[profile.dev]
+opt-level = 1 # Enable a small amount of optimization in debug mode
+strip = "debuginfo" # reduce binary size
+
+[profile.dev.package."*"]
+opt-level = 3
+# TODO: The procedural noise is 10-20x slower with debug assertions on. The
+# standard library has some debug asserts in the vec module. Probably from the
+# set_len method. Try to remove the method.
+debug-assertions = false
+
+# [profile.release]
+# strip = true
